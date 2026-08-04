@@ -4,12 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n vite,api -c blue,green \"vite\" \"node --env-file=.env api/dev-server.cjs\"",
+    "dev": "concurrently -n vite,api -c blue,green \"vite\" \"npm:dev:api\"",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "start": "node server.cjs",
     "test": "node --test \"api/_lib/motor/**/*.test.js\"",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "dev:api": "node --env-file-if-exists=.env api/dev-server-pglite.cjs"
   },
   "dependencies": {
     "@fontsource/inter": "5.1.0",

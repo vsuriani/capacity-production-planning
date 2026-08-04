@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-const PORTA = Number(process.env.API_PORT || 3001);
+// 3101 e não 3001: a porta padrão já é usada por outro projeto interno na máquina de dev.
+const PORTA = Number(process.env.API_PORT || 3101);
 const RAIZ = path.join(__dirname, '..');
 const DADOS = path.join(RAIZ, '.cache', 'pgdata');
 
