@@ -1,0 +1,51 @@
+# --- Credenciais e segredos (NUNCA versionar) ---
+# Regra: segredo só via APP_SECRETS / secret manager (dev-standards/docs/standards/security/)
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+credentials.json
+client_secret*.json
+service-account*.json
+*-service-account.json
+# Chaves de service account do Google (padrao: <projeto>-<hash>.json)
+tractian-*.json
+gcp-*.json
+*credentials*.json
+*secret*.json
+*token*.json
+
+# --- Guia de padroes (repositorio git separado, clonado aqui) ---
+dev-standards/
+
+# --- Artefatos locais de analise / cache (podem conter dado interno) ---
+.cache/
+.local/
+tmp/
+*.csv.local
+
+# --- Dependencias e build ---
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Editor / OS ---
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

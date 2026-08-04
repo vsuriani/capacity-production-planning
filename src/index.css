@@ -1,0 +1,132 @@
+/* Fontes de marca via @fontsource (npm) — o cluster é air-gapped, sem CDN do Google Fonts. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter-tight/600.css';
+@import '@fontsource/inter-tight/700.css';
+@import '@fontsource/inter-tight/800.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  /* Some as setinhas do number input — as grades são densas e elas roubam espaço. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-white border border-slate-200 rounded-lg;
+  }
+
+  .page-header {
+    @apply flex flex-wrap items-start justify-between gap-4 mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-slate-900;
+  }
+  .page-subtitle {
+    @apply text-sm text-slate-500 mt-1;
+  }
+
+  .label-overline {
+    @apply text-overline uppercase text-slate-500;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-primary-600 text-white
+           text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2
+           focus:ring-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-slate-300
+           bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 focus:outline-none
+           focus:ring-2 focus:ring-blue-600/20 disabled:opacity-50 transition-colors;
+  }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-red-300
+           bg-white text-red-700 text-sm font-medium hover:bg-red-50 focus:outline-none
+           focus:ring-2 focus:ring-red-600/20 transition-colors;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm text-slate-900
+           placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/25
+           focus:border-primary-600 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  /* Célula editável das grades densas: sem borda até receber foco. */
+  .cell-input {
+    @apply w-full bg-transparent px-2 py-1.5 text-sm text-right tabular-nums rounded
+           border border-transparent hover:border-slate-300 focus:outline-none
+           focus:border-primary-600 focus:ring-1 focus:ring-blue-600/25 focus:bg-white;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
+           bg-slate-100 text-slate-700 border border-slate-200;
+  }
+  .chip-warn {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
+           bg-amber-50 text-amber-800 border border-amber-200;
+  }
+  .chip-danger {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
+           bg-red-50 text-red-800 border border-red-200;
+  }
+  .chip-ok {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
+           bg-emerald-50 text-emerald-800 border border-emerald-200;
+  }
+
+  .kpi-card {
+    @apply panel p-4 flex flex-col gap-1;
+  }
+  .kpi-value {
+    @apply text-2xl font-semibold font-heading tabular-nums text-slate-900;
+  }
+
+  .data-code {
+    @apply font-mono text-[0.8125rem] text-slate-700;
+  }
+
+  .empty-state {
+    @apply panel p-10 text-center text-sm text-slate-500;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-slate-200 rounded;
+  }
+
+  /* Cabeçalho de tabela densa, grudado no topo ao rolar. */
+  .th {
+    @apply sticky top-0 z-10 bg-slate-50 border-b border-slate-200 px-3 py-2
+           text-left text-label uppercase text-slate-500 whitespace-nowrap;
+  }
+  .td {
+    @apply border-b border-slate-100 px-3 py-1.5 text-sm text-slate-800 whitespace-nowrap;
+  }
+  .td-num {
+    @apply td text-right tabular-nums;
+  }
+}

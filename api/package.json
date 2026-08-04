@@ -1,0 +1,10 @@
+{
+  "name": "capacity-production-planning-api",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dependências instaladas no estágio de runtime do Dockerfile (cluster air-gapped).",
+  "dependencies": {
+    "express": "4.21.1",
+    "pg": "8.13.1"
+  }
+}
