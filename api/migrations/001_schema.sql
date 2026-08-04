@@ -111,11 +111,20 @@ CREATE TABLE cenario (
   -- Quais desvios da planilha estão corrigidos neste cenário. Default {} = tudo fiel.
   correcoes   jsonb NOT NULL DEFAULT '{}'::jsonb,
   observacao  text NOT NULL DEFAULT '',
+  -- true = baseline vinda da planilha. Variantes criadas no app são false, para permitir
+  -- vários cenários do mesmo mês (é assim que se compara fiel x corrigido).
+  importado   boolean NOT NULL DEFAULT false,
   criado_por  text NOT NULL DEFAULT '',
   criado_em   timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX cenario_oficial_idx ON cenario (tipo) WHERE oficial;
+
+-- Uma ÚNICA baseline importada por mês planejado: é o que impede o merge de períodos de
+-- meses diferentes (a planilha reusa "Week 1".."Week 5" em cada mês). Variantes criadas
+-- no app não entram no índice — pode haver várias para o mesmo mês.
+CREATE UNIQUE INDEX cenario_mes_idx ON cenario (tipo, mes, ano)
+  WHERE mes IS NOT NULL AND importado;
 
 CREATE TABLE cenario_parametro (
   cenario_id  integer NOT NULL REFERENCES cenario(id) ON DELETE CASCADE,
@@ -138,6 +147,10 @@ CREATE TABLE cenario_periodo (
   periodo     text NOT NULL,
   ordem       integer NOT NULL DEFAULT 0,
   dias_uteis  numeric(6, 2) NOT NULL DEFAULT 0,
+  -- Headcount digitado à mão na planilha. NULL = usar o ROUNDUP do cálculo.
+  -- Nas colunas mensais e em vários meses do Semanal esse número não acompanha a conta
+  -- (desvio arredondado-manual): Agosto/2026 calcula 9/9/10 e exibe 8/8/8.
+  arredondado_manual  integer,
   PRIMARY KEY (cenario_id, periodo)
 );
 

@@ -47,7 +47,14 @@ export function useCenarioSelecionado(tipo: TipoCenario) {
       if (atual && cenarios.some((c) => c.id === atual)) return atual
       const salvo = Number(localStorage.getItem(chave))
       if (salvo && cenarios.some((c) => c.id === salvo)) return salvo
-      return (cenarios.find((c) => c.oficial) ?? cenarios[0]).id
+
+      // Cada cenário planeja um mês; o default é o mês corrente. Os outros ficam no
+      // seletor como histórico.
+      const agora = new Date()
+      const doMes = cenarios.find(
+        (c) => c.mes === agora.getMonth() + 1 && c.ano === agora.getFullYear(),
+      )
+      return (doMes ?? cenarios.find((c) => c.oficial) ?? cenarios[0]).id
     })
   }, [cenarios, chave])
 

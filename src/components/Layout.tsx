@@ -1,10 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   BarChart3, CalendarRange, ClipboardList, Database, Download, GitCompare,
-  Grid3x3, LayoutGrid, ListTree, Users,
+  Grid3x3, Home, LayoutGrid, ListTree, Moon, Sun, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
+import { useTema } from '../lib/tema'
 
 type Secao = { titulo: string; itens: { para: string; rotulo: string; Icone: typeof BarChart3 }[] }
 
@@ -12,6 +13,7 @@ const SECOES: Secao[] = [
   {
     titulo: 'Planejamento',
     itens: [
+      { para: '/inicio', rotulo: 'Início', Icone: Home },
       { para: '/capacidade', rotulo: 'Capacidade', Icone: BarChart3 },
       { para: '/semanal', rotulo: 'Semanal', Icone: LayoutGrid },
       { para: '/mensal', rotulo: 'Mensal', Icone: Grid3x3 },
@@ -43,6 +45,7 @@ const SECOES: Secao[] = [
 
 export function Layout() {
   const [email, setEmail] = useState<string | null>(null)
+  const { tema, alternar } = useTema()
 
   useEffect(() => {
     apiGet<{ email: string }>('me')
@@ -52,9 +55,15 @@ export function Layout() {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-60 shrink-0 border-r border-slate-200 bg-white flex flex-col">
+      <aside
+        className="w-60 shrink-0 flex flex-col"
+        style={{
+          backgroundColor: 'var(--app-surface)',
+          borderRight: '1px solid var(--app-border)',
+        }}
+      >
         <div className="px-5 py-5 border-b border-slate-200">
-          <div className="font-heading font-bold text-[0.9375rem] tracking-tight text-slate-900">
+          <div className="font-heading font-bold text-[0.9375rem] tracking-tight">
             Dimensionamento
           </div>
           <div className="label-overline mt-0.5">de Linha</div>
@@ -85,11 +94,23 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="px-5 py-4 border-t border-slate-200">
-          <div className="label-overline">Sessão</div>
-          <div className="text-xs text-slate-600 mt-0.5 truncate" title={email ?? ''}>
-            {email ?? 'não autenticado'}
+        <div className="px-5 py-4 border-t border-slate-200 flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <div className="label-overline">Sessão</div>
+            <div className="text-xs text-slate-600 mt-0.5 truncate" title={email ?? ''}>
+              {email ?? 'não autenticado'}
+            </div>
           </div>
+
+          <button
+            onClick={alternar}
+            title={tema === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            aria-label={tema === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            className="shrink-0 p-2 rounded-md border border-slate-300 text-slate-600
+                       hover:bg-slate-50 hover:text-slate-900 transition-colors"
+          >
+            {tema === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
         </div>
       </aside>
 

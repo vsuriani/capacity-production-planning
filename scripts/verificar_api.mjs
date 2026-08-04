@@ -78,9 +78,9 @@ try {
   // ------------------------------------------------------------ cenários
   console.log('\ncenários')
   const { cenarios } = await pedir('GET', 'cenarios')
-  conferir('cenários importados', cenarios.length, 3)
+  conferir('cenários importados', cenarios.length, 23)
 
-  const semanal = cenarios.find((c) => c.tipo === 'semanal')
+  const semanal = cenarios.find((c) => c.tipo === 'semanal' && c.mes === 12)
   const detalhe = await pedir('GET', `cenarios?id=${semanal.id}`)
   ok(`semanal: ${detalhe.periodos.length} períodos, ${detalhe.resultados.length} resultados`)
 
@@ -97,7 +97,16 @@ try {
   const ids = detalhe.diagnosticos.map((d) => d.id).sort()
   ok(`diagnósticos do semanal: ${ids.join(', ')}`)
   if (!ids.includes('pares-desalinhados')) falha('esperava pares-desalinhados no semanal')
-  if (!ids.includes('par-outro-periodo')) falha('esperava par-outro-periodo no semanal')
+
+  // Com o escopo mensal, os 3 termos que apontam para outra coluna ficaram nos cenários
+  // dos meses onde essas colunas caem — não necessariamente neste.
+  const comCruzado = []
+  for (const c of cenarios.filter((x) => x.tipo === 'semanal')) {
+    const d = await pedir('GET', `cenarios?id=${c.id}`)
+    if (d.diagnosticos.some((x) => x.id === 'par-outro-periodo')) comCruzado.push(c.nome)
+  }
+  if (comCruzado.length) ok(`par-outro-periodo aparece em: ${comCruzado.join(', ')}`)
+  else falha('esperava par-outro-periodo em algum cenário semanal')
 
   // ------------------------------------------------------------ capacidade
   console.log('\ncenário de capacidade')
@@ -167,7 +176,7 @@ try {
 
   // ------------------------------------------------------------ calendário -> demanda
   console.log('\ncalendário e geração de demanda')
-  const mensal = cenarios.find((c) => c.tipo === 'mensal')
+  const mensal = cenarios.find((c) => c.tipo === 'mensal' && c.mes === 7 && c.ano === 2026)
   const proj = await pedir('GET', `projecao?cenario=${mensal.id}`)
   conferir('slots na grade', proj.slots.length, 27)
   conferir('semanas geradas', proj.semanas.length, 5)
@@ -237,6 +246,72 @@ try {
     (t) => t.meta_dispositivo_id !== t.qtd_dispositivo_id || t.qtd_periodo !== null,
   )
   conferir('termos desalinhados após alinhar', aindaDesalinhados.length, 0)
+
+  // ------------------------------------------------------------ criar cenário
+  console.log('')
+  console.log('criar cenário do zero (semeado das bases)')
+  const { id: novoId } = await pedir('POST', 'cenarios', {
+    tipo: 'semanal',
+    mes: 11,
+    ano: 2026,
+    nome: 'Novembro/2026 (teste)',
+  })
+  const criado = await pedir('GET', `cenarios?id=${novoId}`)
+
+  conferir('períodos criados', criado.periodos.length, 5)
+  conferir(
+    'rótulos são Semana 1..5',
+    criado.periodos.map((p) => p.periodo).join(','),
+    'Semana 1,Semana 2,Semana 3,Semana 4,Semana 5',
+  )
+  // Novembro/2026: as 5 semanas da grade caem todas com 5 dias úteis.
+  const diasUteis = criado.periodos.map((p) => Number(p.dias_uteis))
+  if (diasUteis.every((d) => d === 5)) ok(`dias úteis contados: ${diasUteis.join(', ')}`)
+  else falha(`dias úteis inesperados: ${diasUteis.join(', ')}`)
+
+  if (criado.metas.length > 0) ok(`tempos por dispositivo herdados: ${criado.metas.length}`)
+  else falha('o cenário novo deveria herdar as metas do cenário mais recente do tipo')
+
+  const desalinhadosNovo = criado.termos.filter(
+    (t) => t.meta_dispositivo_id !== t.qtd_dispositivo_id || t.qtd_periodo !== null,
+  )
+  conferir('termos desalinhados no cenário novo', desalinhadosNovo.length, 0)
+  if (criado.termos.length === criado.metas.length * 5) {
+    ok(`termos criados: ${criado.termos.length} (1 por dispositivo × 5 semanas)`)
+  } else {
+    falha(`termos: ${criado.termos.length}, esperava ${criado.metas.length * 5}`)
+  }
+
+  // Os cadastros globais NÃO são copiados — continuam únicos.
+  const roteirosDepois = await pedir('GET', 'roteiros')
+  conferir('processos seguem globais', roteirosDepois.processos.length, 87)
+  const skuDepois = await pedir('GET', 'sku')
+  conferir('SKU seguem globais', skuDepois.total, 199)
+
+  // Mensal nasce com o calendário do mês.
+  const { id: mensalId } = await pedir('POST', 'cenarios', { tipo: 'mensal', mes: 11, ano: 2026 })
+  const projNova = await pedir('GET', `projecao?cenario=${mensalId}`)
+  if (projNova.projecao?.mes === 11 && projNova.semanas.length === 5) {
+    ok('cenário mensal novo já vem com o calendário do mês')
+  } else {
+    falha(`calendário do cenário novo: ${JSON.stringify(projNova.projecao)}`)
+  }
+
+  // Variantes do mesmo mês SÃO permitidas — é assim que se compara fiel x corrigido.
+  // O índice único vale só para a baseline importada.
+  const { id: variante } = await pedir('POST', 'cenarios', {
+    tipo: 'semanal',
+    mes: 11,
+    ano: 2026,
+    nome: 'Novembro/2026 (variante)',
+  })
+  ok(`variante do mesmo mês permitida: id ${variante}`)
+
+  const doMes = (await pedir('GET', 'cenarios?tipo=semanal')).cenarios.filter(
+    (c) => c.mes === 11 && c.ano === 2026,
+  )
+  conferir('cenários para Novembro/2026', doMes.length, 2)
+  conferir('baselines importadas nesse mês', doMes.filter((c) => c.importado).length, 0)
 } catch (erro) {
   falha(erro.message)
 }

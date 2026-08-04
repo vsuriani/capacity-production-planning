@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AlertTriangle, ShieldCheck } from 'lucide-react'
 import { useApi } from '../lib/hooks'
 import { fmtInt } from '../lib/formato'
@@ -20,6 +21,7 @@ type Importacao = {
  * planilha — nem aqui, nem em nenhuma outra tela.
  */
 export function Importar() {
+  const [shell, setShell] = useState<'PowerShell' | 'bash'>('PowerShell')
   const { dados, erro, carregando } = useApi<{ importacoes: Importacao[] }>('importacao')
   const { dados: catalogo } = useApi<{ desvios: Desvio[] }>('desvios')
 
@@ -50,12 +52,33 @@ export function Importar() {
 
         <section className="panel px-4 py-4">
           <h2 className="font-heading font-semibold text-sm mb-2">Como rodar</h2>
+          <div className="flex gap-2 mb-2">
+            {(['PowerShell', 'bash'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setShell(s)}
+                className={shell === s ? 'chip-ok' : 'chip'}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
           <pre className="bg-slate-900 text-slate-100 rounded-md p-3 text-xs overflow-x-auto">
-{`export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/tractian-bi-operations-dashboard.json
+{shell === 'PowerShell'
+  ? `$env:GOOGLE_APPLICATION_CREDENTIALS = "$env:USERPROFILE\.secrets\tractian-bi-operations-dashboard.json"
+
+python scripts/importar_planilha.py --dry-run   # confere o que seria importado
+python scripts/importar_planilha.py             # importa de verdade`
+  : `export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/tractian-bi-operations-dashboard.json
 
 python scripts/importar_planilha.py --dry-run   # confere o que seria importado
 python scripts/importar_planilha.py             # importa de verdade`}
           </pre>
+          <p className="text-xs text-slate-500 mt-2">
+            O importador fala com a API em <span className="data-code">localhost:3101</span> por
+            padrão. Use <span className="data-code">--api</span> se o seu dev server estiver em
+            outra porta.
+          </p>
           <p className="text-xs text-slate-500 mt-2">
             A importação é idempotente: rodar de novo atualiza os cadastros e reescreve os
             cenários importados, sem duplicar nada.

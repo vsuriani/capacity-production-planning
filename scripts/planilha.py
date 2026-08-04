@@ -314,6 +314,197 @@ def parse_sku_produto():
     return linhas
 
 
+MESES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+MES_INDICE = {m.lower(): i + 1 for i, m in enumerate(MESES)}
+
+
+def _blocos_de_colunas(gv, colunas_com_formula, ano_projecao):
+    """Agrupa as colunas de formula em blocos de mes.
+
+    A planilha organiza as colunas em blocos: a linha 1 traz o nome do mes em algum
+    ponto do bloco (nem sempre na primeira coluna) e a linha 2 traz o rotulo do periodo.
+    Um bloco novo comeca quando o rotulo da linha 2 volta a "Week 1".
+
+    O ano vem de um ano explicito na linha 1 quando existe (o Mensal tem "2026"); senao
+    do ano da Projecao, recuado em 1 se a sequencia de meses da a volta no comeco (o
+    Semanal abre em Dezembro e segue em Marco, ou seja, o Dezembro e do ano anterior).
+
+    @returns [{"mes": int, "ano": int, "colunas": [(indice, rotulo)]}]
+    """
+    ano_explicito = None
+    for c, _ in colunas_com_formula:
+        bruto = cel(gv, 1, c)
+        if isinstance(bruto, (int, float)) and 2000 < bruto < 2100:
+            ano_explicito = int(bruto)
+            break
+
+    # quebra em blocos
+    blocos = []
+    for c, rotulo in colunas_com_formula:
+        primeiro_do_bloco = not blocos or rotulo.strip().lower() in ("week 1", "semana 1")
+        if primeiro_do_bloco:
+            blocos.append({"mes": None, "ano": None, "colunas": []})
+        blocos[-1]["colunas"].append((c, rotulo))
+
+        # nome de mes na linha 1, em qualquer coluna do bloco
+        nome = str(cel(gv, 1, c)).strip().lower()
+        if blocos[-1]["mes"] is None and nome in MES_INDICE:
+            blocos[-1]["mes"] = MES_INDICE[nome]
+
+    # herda o mes do bloco anterior quando a planilha nao rotulou
+    for i, b in enumerate(blocos):
+        if b["mes"] is None:
+            anterior = blocos[i - 1]["mes"] if i > 0 else None
+            b["mes"] = (anterior % 12) + 1 if anterior else 1
+
+    # ano: rola quando o indice do mes cai
+    meses = [b["mes"] for b in blocos]
+    if ano_explicito is not None:
+        ano = ano_explicito
+    elif len(meses) > 1 and meses[0] > meses[1]:
+        ano = ano_projecao - 1
+    else:
+        ano = ano_projecao
+
+    for i, b in enumerate(blocos):
+        if i > 0 and meses[i] < meses[i - 1]:
+            ano += 1
+        b["ano"] = ano
+
+    return blocos
+
+
+def parse_planejamento_por_mes(p, aba, ano_projecao):
+    """Aba 'Planejamento Mensal'/'Semanal' -> UM cenario por mes.
+
+    O escopo mensal e o que resolve a colisao de rotulo: a planilha reusa
+    "Week 1".."Week 5" em cada mes, mas dentro de um mes eles sao unicos.
+    """
+    cfg = ABAS_PLANEJAMENTO[aba]
+    gv = p.valores(aba)
+    gf = p.formulas(aba)
+    tipo = "mensal" if aba == "Planejamento Mensal" else "semanal"
+
+    dispositivos = {}
+    for linha in range(cfg["primeira"], cfg["ultima"] + 1):
+        nome = str(cel(gv, linha, 0)).strip()
+        if nome:
+            dispositivos[linha] = nome
+
+    metas = {nome: num(cel(gv, linha, 1), 0) for linha, nome in dispositivos.items()}
+
+    linha_formula = gf[cfg["formula"] - 1] if cfg["formula"] - 1 < len(gf) else []
+    linha_arred = gf[cfg["formula"]] if cfg["formula"] < len(gf) else []
+
+    com_formula = []
+    for c, conteudo in enumerate(linha_formula):
+        if isinstance(conteudo, str) and conteudo.startswith("="):
+            if extrair_termos(conteudo):
+                com_formula.append((c, str(cel(gv, 2, c)).strip() or nome_col(c)))
+
+    if tipo == "mensal":
+        # No Mensal cada coluna de mes JA e um mes: um cenario por coluna, um periodo.
+        # O bloco semanal que abre a aba (Week 45..) e resto do layout antigo e ja esta
+        # coberto pela aba Semanal — importar como "mensal" seria errado.
+        ano_explicito = None
+        for c, _ in com_formula:
+            bruto = cel(gv, 1, c)
+            if isinstance(bruto, (int, float)) and 2000 < bruto < 2100:
+                ano_explicito = int(bruto)
+                break
+        ano = ano_explicito or ano_projecao
+
+        blocos = []
+        anterior = None
+        for c, rotulo in com_formula:
+            indice = MES_INDICE.get(rotulo.strip().lower())
+            if indice is None:
+                continue  # coluna semanal do layout antigo
+            if anterior is not None and indice < anterior:
+                ano += 1
+            anterior = indice
+            blocos.append({"mes": indice, "ano": ano, "colunas": [(c, rotulo)]})
+    else:
+        blocos = _blocos_de_colunas(gv, com_formula, ano_projecao)
+
+    # coluna -> (mes, ano, rotulo) para resolver os termos que apontam para outra coluna
+    de_coluna = {}
+    for b in blocos:
+        for c, rotulo in b["colunas"]:
+            de_coluna[c] = (b["mes"], b["ano"], rotulo)
+
+    cenarios = []
+    for b in blocos:
+        periodos, demandas, termos = [], [], []
+        ordem_termo = 0
+
+        for ordem, (c, rotulo) in enumerate(b["colunas"]):
+            bruto_arred = linha_arred[c] if c < len(linha_arred) else ""
+            eh_roundup = isinstance(bruto_arred, str) and bruto_arred.upper().startswith("=ROUNDUP")
+
+            periodos.append(
+                {
+                    "periodo": rotulo,
+                    "ordem": ordem,
+                    "diasUteis": num(cel(gv, cfg["dias_uteis"], c), 0),
+                    "arredondadoManual": None
+                    if eh_roundup
+                    else num(cel(gv, cfg["formula"] + 1, c), None),
+                }
+            )
+
+            for meta_linha, qtd_col, qtd_linha in extrair_termos(linha_formula[c]):
+                if meta_linha not in dispositivos or qtd_linha not in dispositivos:
+                    continue
+                # indice da coluna referenciada pelo termo
+                idx = 0
+                for ch in qtd_col:
+                    idx = idx * 26 + (ord(ch) - 64)
+                idx -= 1
+                alvo = de_coluna.get(idx)
+                # termo que aponta para fora do bloco: guarda o rotulo de la
+                fora = alvo is not None and (alvo[0], alvo[1]) != (b["mes"], b["ano"])
+                termos.append(
+                    {
+                        "periodo": rotulo,
+                        "metaDispositivo": dispositivos[meta_linha],
+                        "qtdDispositivo": dispositivos[qtd_linha],
+                        "qtdPeriodo": (alvo[2] if alvo else None)
+                        if (fora or (alvo and alvo[2] != rotulo))
+                        else None,
+                        "ordem": ordem_termo,
+                    }
+                )
+                ordem_termo += 1
+
+            for linha, nome in dispositivos.items():
+                valor = cel(gv, linha, c)
+                if isinstance(valor, (int, float)):
+                    demandas.append(
+                        {"dispositivo": nome, "periodo": rotulo, "quantidade": valor}
+                    )
+
+        cenarios.append(
+            {
+                "nome": f"{MESES[b['mes'] - 1]}/{b['ano']}",
+                "tipo": tipo,
+                "mes": b["mes"],
+                "ano": b["ano"],
+                "dispositivos": list(dispositivos.values()),
+                "metas": metas,
+                "periodos": periodos,
+                "demandas": demandas,
+                "termos": termos,
+                "observacao": f"Importado da aba {aba}",
+            }
+        )
+
+    return cenarios
+
+
 def parse_planejamento(p, aba):
     """Aba 'Planejamento Mensal'/'Semanal' -> cenario com metas, demandas, periodos, termos."""
     cfg = ABAS_PLANEJAMENTO[aba]
@@ -398,7 +589,7 @@ def parse_planejamento(p, aba):
     }
 
 
-def parse_global(p):
+def parse_global(p, ano_base=2026):
     """Aba '🚧 Dimensionamento Global' -> cenario de capacidade."""
     aba = "🚧 Dimensionamento Global"
     gv = p.valores(aba)
@@ -449,6 +640,20 @@ def parse_global(p):
         rot = str(cel(gv, 61, c)).strip()
         if rot:
             colunas[c] = rot
+
+    # O cenario de capacidade e multi-mes de proposito (mostra a curva de headcount ao
+    # longo do ano), mas os meses dao a volta no ano — qualificamos o rotulo com o ano
+    # para nao colidir, como acontece na planilha.
+    ano_corrente = ano_base
+    anterior = None
+    for c in list(colunas):
+        indice = MES_INDICE.get(str(colunas[c]).strip().lower())
+        if indice is None:
+            continue
+        if anterior is not None and indice < anterior:
+            ano_corrente += 1
+        anterior = indice
+        colunas[c] = f"{colunas[c]}/{ano_corrente}"
 
     periodos = []
     demandas = []

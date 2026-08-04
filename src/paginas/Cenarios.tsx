@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Copy, Star, Trash2 } from 'lucide-react'
+import { Copy, Plus, Star, Trash2 } from 'lucide-react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
-import { fmtData, fmtDecimal, fmtInt } from '../lib/formato'
-import type { Cenario } from '../lib/tipos'
+import { MESES, fmtData, fmtDecimal, fmtInt } from '../lib/formato'
+import type { Cenario, TipoCenario } from '../lib/tipos'
 import { Carregando, Erro } from '../components/comuns'
 
 type Comparacao = {
@@ -20,6 +20,27 @@ export function Cenarios() {
   const [erroAcao, setErroAcao] = useState<string | null>(null)
   const [selecionados, setSelecionados] = useState<number[]>([])
   const [comparacao, setComparacao] = useState<Comparacao | null>(null)
+
+  const [criando, setCriando] = useState(false)
+  const [novo, setNovo] = useState({
+    tipo: 'semanal' as TipoCenario,
+    mes: new Date().getMonth() + 1,
+    ano: new Date().getFullYear(),
+    nome: '',
+  })
+
+  async function criar() {
+    await agir(async () => {
+      const corpo: Record<string, unknown> = { tipo: novo.tipo, nome: novo.nome || undefined }
+      if (novo.tipo !== 'capacidade') {
+        corpo.mes = novo.mes
+        corpo.ano = novo.ano
+      }
+      await apiPost('cenarios', corpo)
+      setCriando(false)
+      setNovo({ ...novo, nome: '' })
+    })
+  }
 
   const porTipo = useMemo(() => {
     const mapa = new Map<string, Cenario[]>()
@@ -70,17 +91,93 @@ export function Cenarios() {
             que se compara "fiel à planilha" com "corrigido".
           </p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={comparar}
-          disabled={selecionados.length < 2}
-          title={selecionados.length < 2 ? 'Selecione ao menos dois cenários' : ''}
-        >
-          Comparar {selecionados.length > 0 && `(${selecionados.length})`}
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => setCriando((v) => !v)}>
+            <Plus size={15} /> Novo cenário
+          </button>
+          <button
+            className="btn-primary"
+            onClick={comparar}
+            disabled={selecionados.length < 2}
+            title={selecionados.length < 2 ? 'Selecione ao menos dois cenários' : ''}
+          >
+            Comparar {selecionados.length > 0 && `(${selecionados.length})`}
+          </button>
+        </div>
       </div>
 
       <Erro mensagem={erro ?? erroAcao} />
+
+      {criando && (
+        <section className="panel px-4 py-4 mb-5">
+          <h2 className="font-heading font-semibold text-sm mb-1">Novo cenário</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Nasce com os tempos por dispositivo do cenário mais recente do mesmo tipo, os dias
+            úteis já contados do calendário e os termos da fórmula alinhados. Processos e
+            sequências, Base de PROD e o mapa SKU → produto são cadastros globais — o cenário
+            aponta para eles, não copia.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="label-overline">Tipo</span>
+              <select
+                className="input-field w-44"
+                value={novo.tipo}
+                onChange={(e) => setNovo({ ...novo, tipo: e.target.value as TipoCenario })}
+              >
+                <option value="semanal">Semanal</option>
+                <option value="mensal">Mensal</option>
+                <option value="capacidade">Capacidade</option>
+              </select>
+            </label>
+
+            {novo.tipo !== 'capacidade' && (
+              <>
+                <label className="block">
+                  <span className="label-overline">Mês</span>
+                  <select
+                    className="input-field w-40"
+                    value={novo.mes}
+                    onChange={(e) => setNovo({ ...novo, mes: Number(e.target.value) })}
+                  >
+                    {MESES.map((m, i) => (
+                      <option key={m} value={i + 1}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="label-overline">Ano</span>
+                  <input
+                    type="number"
+                    className="input-field w-28"
+                    value={novo.ano}
+                    onChange={(e) => setNovo({ ...novo, ano: Number(e.target.value) })}
+                  />
+                </label>
+              </>
+            )}
+
+            <label className="block flex-1 min-w-48">
+              <span className="label-overline">Nome (opcional)</span>
+              <input
+                className="input-field"
+                placeholder={
+                  novo.tipo === 'capacidade' ? 'Novo cenário' : `${MESES[novo.mes - 1]}/${novo.ano}`
+                }
+                value={novo.nome}
+                onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
+              />
+            </label>
+
+            <button className="btn-primary" onClick={criar}>
+              Criar
+            </button>
+          </div>
+        </section>
+      )}
 
       {carregando && !dados ? (
         <Carregando />

@@ -8,7 +8,7 @@ Uso:
     python scripts/importar_planilha.py                    # le da API e envia
     python scripts/importar_planilha.py --dump             # le do .cache local
     python scripts/importar_planilha.py --dry-run          # so monta e salva o payload
-    python scripts/importar_planilha.py --api http://localhost:3001
+    python scripts/importar_planilha.py --api http://localhost:3101
 """
 
 import argparse
@@ -29,24 +29,41 @@ def montar_payload(p):
     processos, produtos, aliases = pl.parse_roteiros(p)
     sku_produto = pl.parse_sku_produto()
 
-    mensal = pl.parse_planejamento(p, "Planejamento Mensal")
-    semanal = pl.parse_planejamento(p, "Planejamento Semanal")
-    capacidade = pl.parse_global(p)
+    projecao = pl.parse_projecao(p)
+    mensais = pl.parse_planejamento_por_mes(p, "Planejamento Mensal", projecao["ano"])
+    semanais = pl.parse_planejamento_por_mes(p, "Planejamento Semanal", projecao["ano"])
+    capacidade = pl.parse_global(p, projecao["ano"])
 
-    # A grade, a lista de demanda e a alocacao pertencem ao cenario mensal (e o que a
-    # aba "Projeção das linhas" usa hoje: mes/ano na propria aba).
-    mensal["projecao"] = pl.parse_projecao(p)
-    mensal["mes"] = mensal["projecao"]["mes"]
-    mensal["ano"] = mensal["projecao"]["ano"]
-    mensal["demandaProcesso"] = pl.parse_demandas(p)
-    mensal["alocacao"] = pl.parse_alocacao(p)
+    # A grade, a lista de demanda e a alocacao sao do mes que a aba "Projeção das linhas"
+    # esta planejando; anexa ao cenario mensal daquele mes (cria se a aba nao o cobrir).
+    alvo = next(
+        (c for c in mensais if c["mes"] == projecao["mes"] and c["ano"] == projecao["ano"]),
+        None,
+    )
+    if alvo is None:
+        alvo = {
+            "nome": f"{pl.MESES[projecao['mes'] - 1]}/{projecao['ano']}",
+            "tipo": "mensal",
+            "mes": projecao["mes"],
+            "ano": projecao["ano"],
+            "dispositivos": [],
+            "metas": {},
+            "periodos": [],
+            "demandas": [],
+            "termos": [],
+            "observacao": "Criado para receber o calendário da Projeção das linhas",
+        }
+        mensais.append(alvo)
+    alvo["projecao"] = projecao
+    alvo["demandaProcesso"] = pl.parse_demandas(p)
+    alvo["alocacao"] = pl.parse_alocacao(p)
 
     # Produtos citados so no mapa SKU->produto (ex.: "OEE Trac", que nao existe na base).
     todos_produtos = sorted(set(produtos) | {m["produto"] for m in sku_produto})
 
     dispositivos = []
     vistos = set()
-    for cen in (mensal, semanal, capacidade):
+    for cen in [*mensais, *semanais, capacidade]:
         for nome in cen["dispositivos"]:
             if nome not in vistos:
                 vistos.add(nome)
@@ -61,7 +78,7 @@ def montar_payload(p):
         "processos": processos,
         "skuProduto": sku_produto,
         "dispositivos": dispositivos,
-        "cenarios": [capacidade, semanal, mensal],
+        "cenarios": [capacidade, *semanais, *mensais],
     }
 
 
@@ -114,7 +131,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dump", action="store_true", help="ler do .cache em vez da API")
     ap.add_argument("--dry-run", action="store_true", help="não envia, só salva o payload")
-    ap.add_argument("--api", default="http://localhost:3001", help="base do app")
+    ap.add_argument(
+        "--api",
+        default="http://localhost:3101",
+        help="base do app (padrão = porta do dev server deste projeto)",
+    )
     args = ap.parse_args()
 
     p = pl.do_dump() if args.dump else pl.da_api()

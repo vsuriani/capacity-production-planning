@@ -222,10 +222,16 @@ async function gravarDispositivos(c, lista = []) {
 // ---------------------------------------------------------------- cenários
 
 async function gravarCenario(c, cenario, dispositivos, email) {
-  const { rows: existente } = await c.query(
-    'SELECT id FROM cenario WHERE tipo = $1 AND nome = $2',
-    [cenario.tipo, cenario.nome],
-  );
+  // Um cenário é identificado pelo mês que ele planeja. O de capacidade não tem mês,
+  // então cai no nome.
+  const { rows: existente } = cenario.mes
+    ? await c.query(
+        'SELECT id FROM cenario WHERE tipo = $1 AND mes = $2 AND ano = $3 AND importado',
+        [cenario.tipo, cenario.mes, cenario.ano],
+      )
+    : await c.query('SELECT id FROM cenario WHERE tipo = $1 AND nome = $2 AND importado', [
+        cenario.tipo, cenario.nome,
+      ]);
 
   let cenarioId;
   if (existente.length) {
@@ -243,15 +249,16 @@ async function gravarCenario(c, cenario, dispositivos, email) {
       await c.query(`DELETE FROM ${tabela} WHERE cenario_id = $1`, [cenarioId]);
     }
     await c.query('DELETE FROM projecao WHERE cenario_id = $1', [cenarioId]);
-    await c.query('UPDATE cenario SET mes = $2, ano = $3 WHERE id = $1', [
+    await c.query('UPDATE cenario SET nome = $2, mes = $3, ano = $4 WHERE id = $1', [
       cenarioId,
+      cenario.nome,
       cenario.mes ?? null,
       cenario.ano ?? null,
     ]);
   } else {
     const { rows } = await c.query(
-      `INSERT INTO cenario (nome, tipo, mes, ano, observacao, criado_por)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO cenario (nome, tipo, mes, ano, observacao, criado_por, importado)
+       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING id`,
       [
         cenario.nome,
         cenario.tipo,
@@ -280,11 +287,13 @@ async function gravarCenario(c, cenario, dispositivos, email) {
 
   for (const p of cenario.periodos || []) {
     await c.query(
-      `INSERT INTO cenario_periodo (cenario_id, periodo, ordem, dias_uteis)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO cenario_periodo (cenario_id, periodo, ordem, dias_uteis, arredondado_manual)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (cenario_id, periodo) DO UPDATE
-         SET ordem = EXCLUDED.ordem, dias_uteis = EXCLUDED.dias_uteis`,
-      [cenarioId, p.periodo, p.ordem ?? 0, p.diasUteis ?? 0],
+         SET ordem = EXCLUDED.ordem,
+             dias_uteis = EXCLUDED.dias_uteis,
+             arredondado_manual = EXCLUDED.arredondado_manual`,
+      [cenarioId, p.periodo, p.ordem ?? 0, p.diasUteis ?? 0, p.arredondadoManual ?? null],
     );
   }
 

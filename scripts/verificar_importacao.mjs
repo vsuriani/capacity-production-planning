@@ -56,7 +56,7 @@ const r1 = await aplicarPayload(db, payload, 'vsuriani@tractian.com')
 conferir('sku', r1.contagens.sku, 199)
 conferir('processo', r1.contagens.processo, 87)
 conferir('dispositivo', r1.contagens.dispositivo, 26)
-conferir('cenario', r1.contagens.cenario, 3)
+conferir('cenario', r1.contagens.cenario, 23)
 conferir('projecao_slot', r1.contagens.projecao_slot, 27)
 conferir('demanda_processo', r1.contagens.demanda_processo, 75)
 conferir('metrica_componente', r1.contagens.metrica_componente, 40)
@@ -81,17 +81,29 @@ for (const tabela of [
   'cenario_formula_par', 'metrica_componente', 'projecao_slot', 'demanda_processo',
 ]) {
   const { rows } = await db.query(`SELECT count(*)::int AS n FROM ${tabela}`)
-  const esperado = { sku: 199, processo: 87, dispositivo: 26, cenario: 3, projecao_slot: 27, demanda_processo: 75 }[tabela]
+  const esperado = { sku: 199, processo: 87, dispositivo: 26, cenario: 23, projecao_slot: 27, demanda_processo: 75 }[tabela]
   if (esperado !== undefined) conferir(`${tabela} após 2ª carga`, rows[0].n, esperado)
   else ok(`${tabela}: ${rows[0].n}`)
 }
-if (r2.contagens.cenario !== 3) falha('a 2ª carga deveria reusar os 3 cenários, não criar novos')
+if (r2.contagens.cenario !== 23) falha('a 2ª carga deveria reusar os 23 cenários, não criar novos')
+
 
 // ---------------------------------------------------------------- consultas das telas
 
 console.log('\nconsultas que as telas vão fazer')
 
 const q = async (sql, params) => (await db.query(sql, params)).rows
+
+// Nenhum cenário pode ter período repetido — é o bug que o escopo mensal resolve.
+const repetidos = await q(`
+  SELECT c.nome, p.periodo, count(*)::int AS n
+    FROM cenario_periodo p JOIN cenario c ON c.id = p.cenario_id
+   GROUP BY c.nome, p.periodo HAVING count(*) > 1`)
+if (repetidos.length) falha(`períodos repetidos: ${JSON.stringify(repetidos)}`)
+else ok('nenhum cenário tem período repetido')
+
+const semMes = await q(`SELECT count(*)::int AS n FROM cenario WHERE tipo <> 'capacidade' AND mes IS NULL`)
+conferir('cenários de planejamento sem mês', semMes[0].n, 0)
 
 const [{ n: skuSemRoteiro }] = await q(`
   SELECT count(*)::int AS n FROM (

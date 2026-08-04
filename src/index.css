@@ -10,13 +10,118 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Tema: tokens de superfície, borda e tinta. O modo escuro é ESCOLHIDO — passos
+ * próprios das mesmas rampas de marca, não um flip automático do claro.
+ *
+ * Só a marca é fixa (Slate + Blue). O bridge no fim do arquivo remapeia as utilities
+ * cruas que as telas usam (bg-white, border-slate-200, text-slate-500…) para estes
+ * tokens, então nenhuma tela precisa de variante `dark:`.
+ */
+:root,
+[data-theme='light'] {
+  --app-bg: #f8fafc;          /* slate-50  */
+  --app-surface: #ffffff;
+  --app-surface-2: #f8fafc;   /* cabeçalhos de tabela, faixas */
+  --app-surface-3: #f1f5f9;   /* slate-100 */
+  --app-border: #e2e8f0;      /* slate-200 */
+  --app-border-soft: #f1f5f9; /* slate-100 */
+  --app-border-strong: #cbd5e1;
+
+  --ink: #0f172a;             /* slate-900 */
+  --ink-2: #334155;           /* slate-700 */
+  --ink-3: #475569;           /* slate-600 */
+  --ink-muted: #64748b;       /* slate-500 */
+  --ink-faint: #94a3b8;       /* slate-400 */
+  --ink-ghost: #cbd5e1;       /* slate-300 */
+
+  --accent: #2563eb;          /* Blue 600 — marca */
+  --accent-ink: #1d4ed8;      /* texto de accent sobre superfície clara */
+  --accent-soft: #eff6ff;     /* blue-50  */
+  --accent-soft-2: #dbeafe;   /* blue-100 */
+
+  --estado-atencao-bg: #fffbeb;
+  --estado-atencao-bg-2: #fef3c7;
+  --estado-atencao-ink: #92400e;
+  --estado-atencao-border: #fde68a;
+
+  --estado-critico-bg: #fef2f2;
+  --estado-critico-bg-2: #fee2e2;
+  --estado-critico-ink: #991b1b;
+  --estado-critico-border: #fecaca;
+
+  --estado-ok-bg: #ecfdf5;
+  --estado-ok-ink: #065f46;
+  --estado-ok-border: #a7f3d0;
+
+  --sombra: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+
+  /* Rampa sequencial do heat map: um matiz (Blue), lightness monotônica.
+     No claro vai de claro para escuro (0,932 → 0,882 → 0,714 → 0,546). */
+  --heat-1: #dbeafe; --heat-1-ink: #0f172a;
+  --heat-2: #bfdbfe; --heat-2-ink: #0f172a;
+  --heat-3: #60a5fa; --heat-3-ink: #0f172a;
+  --heat-4: #2563eb; --heat-4-ink: #ffffff;
+}
+
+[data-theme='dark'] {
+  --app-bg: #020617;          /* slate-950 */
+  --app-surface: #0f172a;     /* slate-900 */
+  --app-surface-2: #16203a;
+  --app-surface-3: #1e293b;   /* slate-800 */
+  --app-border: #1e293b;      /* slate-800 */
+  --app-border-soft: #172033;
+  --app-border-strong: #334155;
+
+  --ink: #f1f5f9;             /* slate-100 */
+  --ink-2: #e2e8f0;           /* slate-200 */
+  --ink-3: #cbd5e1;           /* slate-300 */
+  --ink-muted: #94a3b8;       /* slate-400 */
+  --ink-faint: #64748b;       /* slate-500 */
+  --ink-ghost: #475569;       /* slate-600 */
+
+  --accent: #3b82f6;          /* Blue 500 — passo próprio do escuro */
+  --accent-ink: #93c5fd;      /* blue-300: texto de accent sobre superfície escura */
+  --accent-soft: #172554;     /* blue-950 */
+  --accent-soft-2: #1e3a8a;   /* blue-900 */
+
+  --estado-atencao-bg: #2a1e05;
+  --estado-atencao-bg-2: #3f2d06;
+  --estado-atencao-ink: #fcd34d;
+  --estado-atencao-border: #57400c;
+
+  --estado-critico-bg: #2a0b0b;
+  --estado-critico-bg-2: #3f1010;
+  --estado-critico-ink: #fca5a5;
+  --estado-critico-border: #5b1717;
+
+  --estado-ok-bg: #052e22;
+  --estado-ok-ink: #6ee7b7;
+  --estado-ok-border: #10583f;
+
+  --sombra: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+
+  /* No escuro a âncora inverte: a rampa sai da superfície e vai CLAREANDO
+     (L 0,379 → 0,488 → 0,623 → 0,809), todos os passos em AA. */
+  --heat-1: #1e3a8a; --heat-1-ink: #ffffff;
+  --heat-2: #1d4ed8; --heat-2-ink: #ffffff;
+  --heat-3: #3b82f6; --heat-3-ink: #0f172a;
+  --heat-4: #93c5fd; --heat-4-ink: #0f172a;
+}
+
 @layer base {
   html {
     @apply antialiased;
+    color-scheme: light;
+  }
+  html[data-theme='dark'] {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 font-sans;
+    background-color: var(--app-bg);
+    color: var(--ink);
+    @apply font-sans;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -32,101 +137,226 @@
   input[type='number'] {
     -moz-appearance: textfield;
   }
+
+  ::selection {
+    background-color: var(--accent-soft-2);
+  }
 }
 
 @layer components {
   .panel {
-    @apply bg-white border border-slate-200 rounded-lg;
+    background-color: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: var(--sombra);
+    @apply rounded-lg;
   }
 
   .page-header {
     @apply flex flex-wrap items-start justify-between gap-4 mb-6;
   }
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-slate-900;
+    color: var(--ink);
+    @apply text-2xl font-semibold tracking-tight;
   }
   .page-subtitle {
-    @apply text-sm text-slate-500 mt-1;
+    color: var(--ink-muted);
+    @apply text-sm mt-1;
   }
 
   .label-overline {
-    @apply text-overline uppercase text-slate-500;
+    color: var(--ink-muted);
+    @apply text-overline uppercase;
   }
 
   .btn-primary {
-    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-primary-600 text-white
-           text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2
-           focus:ring-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+    background-color: var(--accent);
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md text-white
+           text-sm font-medium hover:brightness-110 focus:outline-none focus:ring-2
+           focus:ring-blue-600/35 disabled:opacity-50 disabled:cursor-not-allowed transition;
   }
   .btn-ghost {
-    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-slate-300
-           bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 focus:outline-none
-           focus:ring-2 focus:ring-blue-600/20 disabled:opacity-50 transition-colors;
+    background-color: var(--app-surface);
+    border: 1px solid var(--app-border-strong);
+    color: var(--ink-2);
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md text-sm font-medium
+           focus:outline-none focus:ring-2 focus:ring-blue-600/25 disabled:opacity-50 transition;
+  }
+  .btn-ghost:hover {
+    background-color: var(--app-surface-3);
   }
   .btn-danger {
-    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-red-300
-           bg-white text-red-700 text-sm font-medium hover:bg-red-50 focus:outline-none
-           focus:ring-2 focus:ring-red-600/20 transition-colors;
+    background-color: var(--app-surface);
+    border: 1px solid var(--estado-critico-border);
+    color: var(--estado-critico-ink);
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-md text-sm font-medium
+           focus:outline-none focus:ring-2 focus:ring-red-600/25 transition;
   }
 
   .input-field {
-    @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm text-slate-900
-           placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/25
-           focus:border-primary-600 disabled:bg-slate-50 disabled:text-slate-500;
+    background-color: var(--app-surface);
+    border: 1px solid var(--app-border-strong);
+    color: var(--ink);
+    @apply w-full px-3 py-2 rounded-md text-sm focus:outline-none focus:ring-2
+           focus:ring-blue-600/25 disabled:opacity-60;
+  }
+  .input-field:focus {
+    border-color: var(--accent);
+  }
+  .input-field::placeholder {
+    color: var(--ink-faint);
   }
 
   /* Célula editável das grades densas: sem borda até receber foco. */
   .cell-input {
+    color: var(--ink);
     @apply w-full bg-transparent px-2 py-1.5 text-sm text-right tabular-nums rounded
-           border border-transparent hover:border-slate-300 focus:outline-none
-           focus:border-primary-600 focus:ring-1 focus:ring-blue-600/25 focus:bg-white;
+           border border-transparent focus:outline-none focus:ring-1 focus:ring-blue-600/25;
+  }
+  .cell-input:hover {
+    border-color: var(--app-border-strong);
+  }
+  .cell-input:focus {
+    border-color: var(--accent);
+    background-color: var(--app-surface);
+  }
+  .cell-input::placeholder {
+    color: var(--ink-ghost);
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
-           bg-slate-100 text-slate-700 border border-slate-200;
+    background-color: var(--app-surface-3);
+    color: var(--ink-2);
+    border: 1px solid var(--app-border);
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label;
   }
   .chip-warn {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
-           bg-amber-50 text-amber-800 border border-amber-200;
+    background-color: var(--estado-atencao-bg);
+    color: var(--estado-atencao-ink);
+    border: 1px solid var(--estado-atencao-border);
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label;
   }
   .chip-danger {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
-           bg-red-50 text-red-800 border border-red-200;
+    background-color: var(--estado-critico-bg);
+    color: var(--estado-critico-ink);
+    border: 1px solid var(--estado-critico-border);
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label;
   }
   .chip-ok {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label
-           bg-emerald-50 text-emerald-800 border border-emerald-200;
+    background-color: var(--estado-ok-bg);
+    color: var(--estado-ok-ink);
+    border: 1px solid var(--estado-ok-border);
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label;
   }
 
   .kpi-card {
     @apply panel p-4 flex flex-col gap-1;
   }
   .kpi-value {
-    @apply text-2xl font-semibold font-heading tabular-nums text-slate-900;
+    color: var(--ink);
+    @apply text-2xl font-semibold font-heading tabular-nums;
   }
 
   .data-code {
-    @apply font-mono text-[0.8125rem] text-slate-700;
+    color: var(--ink-2);
+    @apply font-mono text-[0.8125rem];
   }
 
   .empty-state {
-    @apply panel p-10 text-center text-sm text-slate-500;
+    color: var(--ink-muted);
+    @apply panel p-10 text-center text-sm;
   }
 
   .skeleton {
-    @apply animate-pulse bg-slate-200 rounded;
+    background-color: var(--app-surface-3);
+    @apply animate-pulse rounded;
   }
 
   /* Cabeçalho de tabela densa, grudado no topo ao rolar. */
+  /* Células do heat map: a cor é a magnitude, a tinta acompanha o passo. */
+  .heat-0 { background-color: var(--app-surface); color: var(--ink-ghost); }
+  .heat-1 { background-color: var(--heat-1); color: var(--heat-1-ink); }
+  .heat-2 { background-color: var(--heat-2); color: var(--heat-2-ink); }
+  .heat-3 { background-color: var(--heat-3); color: var(--heat-3-ink); }
+  .heat-4 { background-color: var(--heat-4); color: var(--heat-4-ink); }
+  .heat-atencao {
+    background-color: var(--estado-atencao-bg-2);
+    color: var(--estado-atencao-ink);
+  }
+  .heat-critico {
+    background-color: var(--estado-critico-bg-2);
+    color: var(--estado-critico-ink);
+  }
+
   .th {
-    @apply sticky top-0 z-10 bg-slate-50 border-b border-slate-200 px-3 py-2
-           text-left text-label uppercase text-slate-500 whitespace-nowrap;
+    background-color: var(--app-surface-2);
+    border-bottom: 1px solid var(--app-border);
+    color: var(--ink-muted);
+    @apply sticky top-0 z-10 px-3 py-2 text-left text-label uppercase whitespace-nowrap;
   }
   .td {
-    @apply border-b border-slate-100 px-3 py-1.5 text-sm text-slate-800 whitespace-nowrap;
+    border-bottom: 1px solid var(--app-border-soft);
+    color: var(--ink-2);
+    @apply px-3 py-1.5 text-sm whitespace-nowrap;
   }
   .td-num {
     @apply td text-right tabular-nums;
   }
+}
+
+/*
+ * Bridge: remapeia as utilities cruas usadas nas telas para os tokens do tema.
+ * O seletor `[data-theme]` tem especificidade maior que a classe sozinha, então não
+ * precisa de !important. Sem isto, cada tela precisaria de variantes `dark:`.
+ */
+@layer utilities {
+  [data-theme] .bg-white { background-color: var(--app-surface); }
+  [data-theme] .bg-slate-50 { background-color: var(--app-surface-2); }
+  [data-theme] .bg-slate-100 { background-color: var(--app-surface-3); }
+  [data-theme] .bg-slate-50\/60 { background-color: var(--app-surface-2); }
+  [data-theme] .bg-slate-50\/80 { background-color: var(--app-surface-2); }
+  [data-theme] .hover\:bg-slate-50:hover { background-color: var(--app-surface-2); }
+  [data-theme] .hover\:bg-slate-50\/60:hover { background-color: var(--app-surface-2); }
+
+  [data-theme] .border-slate-100 { border-color: var(--app-border-soft); }
+  [data-theme] .border-slate-200 { border-color: var(--app-border); }
+  [data-theme] .border-slate-300 { border-color: var(--app-border-strong); }
+  [data-theme] .divide-slate-100 > * + * { border-color: var(--app-border-soft); }
+
+  [data-theme] .text-slate-900 { color: var(--ink); }
+  [data-theme] .text-slate-800 { color: var(--ink-2); }
+  [data-theme] .text-slate-700 { color: var(--ink-2); }
+  [data-theme] .text-slate-600 { color: var(--ink-3); }
+  [data-theme] .text-slate-500 { color: var(--ink-muted); }
+  [data-theme] .text-slate-400 { color: var(--ink-faint); }
+  [data-theme] .text-slate-300 { color: var(--ink-ghost); }
+
+  [data-theme] .bg-primary-50 { background-color: var(--accent-soft); }
+  [data-theme] .bg-primary-50\/50 { background-color: var(--accent-soft); }
+  [data-theme] .border-primary-200 { border-color: var(--accent-soft-2); }
+  [data-theme] .text-primary-700 { color: var(--accent-ink); }
+  [data-theme] .text-primary-900 { color: var(--accent-ink); }
+  [data-theme] .border-primary-600 { border-color: var(--accent); }
+
+  /* Estados: amber/red/emerald só carregam significado (aviso/erro/ok). */
+  [data-theme] .bg-amber-50, [data-theme] .bg-amber-50\/60 { background-color: var(--estado-atencao-bg); }
+  [data-theme] .bg-amber-100 { background-color: var(--estado-atencao-bg-2); }
+  [data-theme] .border-amber-200 { border-color: var(--estado-atencao-border); }
+  [data-theme] .text-amber-900, [data-theme] .text-amber-800,
+  [data-theme] .text-amber-700, [data-theme] .text-amber-600 { color: var(--estado-atencao-ink); }
+
+  [data-theme] .bg-red-50 { background-color: var(--estado-critico-bg); }
+  [data-theme] .bg-red-100 { background-color: var(--estado-critico-bg-2); }
+  [data-theme] .border-red-200, [data-theme] .border-red-300 { border-color: var(--estado-critico-border); }
+  [data-theme] .text-red-900, [data-theme] .text-red-800,
+  [data-theme] .text-red-700, [data-theme] .text-red-600 { color: var(--estado-critico-ink); }
+  [data-theme] .hover\:text-red-600:hover, [data-theme] .hover\:text-red-700:hover { color: var(--estado-critico-ink); }
+
+  [data-theme] .bg-emerald-50, [data-theme] .bg-emerald-50\/50 { background-color: var(--estado-ok-bg); }
+  [data-theme] .border-emerald-200 { border-color: var(--estado-ok-border); }
+  [data-theme] .text-emerald-900, [data-theme] .text-emerald-800,
+  [data-theme] .text-emerald-700, [data-theme] .text-emerald-600 { color: var(--estado-ok-ink); }
+
+  /* O <pre> de comandos já é escuro no claro; no escuro ganha a superfície do tema. */
+  [data-theme='dark'] .bg-slate-900 { background-color: var(--app-surface-3); }
+  [data-theme='dark'] .text-slate-100 { color: var(--ink); }
 }

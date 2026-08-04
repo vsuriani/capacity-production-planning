@@ -126,8 +126,20 @@ Os testes do motor batem contra **números reais** da planilha: `api/_lib/motor/
 gerado por `scripts/motor_fixtures.py` a partir do dump em `.cache/sheet-dump/`. O teste de
 fidelidade confere os **65 períodos** das abas Mensal e Semanal.
 
-> `process.exit()` durante o teardown do pglite dispara um assert do libuv no Windows — use
-> `process.exitCode`.
+Screenshot de uma tela, em qualquer tema (o `prefers-color-scheme` só é emulável pelo CDP; as
+flags de linha de comando do Chrome não afetam esse media query em headless):
+
+```bash
+node scripts/captura.mjs inicio dark .cache/telas/inicio-escuro.png
+```
+
+Gotchas do dev:
+
+- `process.exit()` durante o teardown do pglite dispara um assert do libuv no Windows — use
+  `process.exitCode`.
+- **Não mate o dev server com `Stop-Process -Force`**: o datadir do pglite não sobrevive e o
+  próximo boot falha em `_pg_initdb`. Use Ctrl+C. Se corromper: `rm -rf .cache/pgdata` e reimporte.
+- Rotas novas só aparecem depois de reiniciar o dev server (o roteamento é lido no boot).
 
 ---
 
@@ -139,8 +151,25 @@ Primitivos em `src/index.css`: `.panel`, `.btn-primary`/`.btn-ghost`, `.input-fi
 `.cell-input`, `.chip`/`.chip-warn`/`.chip-danger`/`.chip-ok`, `.kpi-card`, `.page-header`,
 `.th`/`.td`/`.td-num`, `.empty-state`, `.skeleton`. Reúse em vez de recriar.
 
+### Tema claro/escuro
+
+`src/lib/tema.tsx` grava a escolha no localStorage e, sem escolha, segue o
+`prefers-color-scheme`. O tema vai no atributo `data-theme` do `<html>`.
+
+As cores vivem em **tokens CSS** (`--app-surface`, `--ink`, `--accent`, `--estado-*`,
+`--heat-*`) e os primitivos consomem os tokens. Um **bridge** no fim do `index.css` remapeia as
+utilities cruas que as telas usam (`bg-white`, `border-slate-200`, `text-slate-500`, os
+amber/red/emerald de estado…) para os mesmos tokens — o seletor `[data-theme] .classe` tem
+especificidade maior que a classe sozinha, então não precisa de `!important`. **Por isso nenhuma
+tela tem variante `dark:`**: ao criar UI nova, use os primitivos ou as utilities já cobertas pelo
+bridge; se precisar de uma cor nova, adicione o token e a linha no bridge.
+
+O escuro é **escolhido**, não um flip automático: são passos próprios das mesmas rampas de marca.
+
 **Heat map** (`src/paginas/Operadores.tsx`): ocupação é magnitude → rampa sequencial de um único
-matiz (Blue 100→600), lightness monotônica verificada (0,932 → 0,882 → 0,714 → 0,546). Estouro de
+matiz (Blue), com lightness monotônica verificada nos dois temas — claro vai de claro a escuro
+(0,932 → 0,882 → 0,714 → 0,546) e **escuro inverte a âncora**, saindo da superfície e clareando
+(0,379 → 0,488 → 0,623 → 0,809), todos os passos em AA. Classes `.heat-0`…`.heat-4`. Estouro de
 jornada é **estado**, não magnitude → paleta de status com ícone e rótulo, nunca só a cor. Cada
 célula traz o número, o que também resolve o contraste baixo dos passos claros.
 
@@ -172,3 +201,29 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   handlers são exercitados de verdade, não mockados.
 - 2026-08 — A importação **mescla** os SKU duplicados da Base de PROD (216 linhas, 199 códigos)
   mantendo o valor não vazio de cada campo, e nunca sobrescreve descrição preenchida com vazia.
+- 2026-08 — **Cenário é escopado a um mês** (decisão do usuário). A tela Semanal mostra só as
+  **Semana 1–5 do mês** — as mesmas que `gradeDoMes()` monta para o Calendário — e a Mensal mostra
+  só o **mês corrente**. Outros meses viram cenários salvos (histórico), selecionáveis no topo.
+  Isso resolve de raiz o bug de chave de período: a planilha reusa "Week 1".."Week 5" em cada mês
+  (40 colunas, 12 rótulos distintos), e dentro de um único mês os rótulos não repetem.
+
+---
+
+## 9. Próximo passo (em aberto)
+
+Implementar o escopo mensal decidido acima. Sequência:
+
+1. **Schema** — `mes`/`ano` obrigatórios em `cenario` para os tipos `semanal` e `mensal`; unique
+   `(tipo, mes, ano)`. `cenario_periodo.periodo` passa a ser `'Semana 1'..'Semana 5'` (semanal) ou
+   o nome do mês (mensal), únicos dentro do cenário.
+2. **Importador** (`scripts/planilha.py`) — quebrar as 40 colunas do Semanal e as 25 do Mensal em
+   **um cenário por mês/ano**, mapeando cada coluna da planilha para a semana/mês certo. É aqui que
+   está o trabalho de verdade: descobrir a que mês cada coluna pertence (as semanais repetem
+   rótulo; usar a ordem das colunas + o bloco).
+3. **Telas** — `useCenarioSelecionado` passa a preferir o cenário do mês corrente; o seletor lista
+   o histórico. A grade some com o scroll horizontal (5 colunas no Semanal, 1 no Mensal).
+4. **Verificar** — `scripts/verificar_api.mjs` deve provar que nenhum cenário tem período repetido
+   e que o pico do Semanal volta a um valor plausível (hoje mostra 247 por causa do merge).
+
+Enquanto isso não for feito, os números do Semanal/Mensal a partir de onde os rótulos repetem estão
+inflados. Capacidade e as colunas de rótulo único estão corretas.

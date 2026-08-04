@@ -49,10 +49,12 @@ async function salvar(req, res) {
     }
     for (const p of periodos) {
       await c.query(
-        `INSERT INTO cenario_periodo (cenario_id, periodo, ordem, dias_uteis)
-         VALUES ($1, $2, COALESCE($3, 0), $4)
-         ON CONFLICT (cenario_id, periodo) DO UPDATE SET dias_uteis = EXCLUDED.dias_uteis`,
-        [cenarioId, p.periodo, p.ordem ?? null, p.diasUteis],
+        `INSERT INTO cenario_periodo (cenario_id, periodo, ordem, dias_uteis, arredondado_manual)
+         VALUES ($1, $2, COALESCE($3, 0), $4, $5)
+         ON CONFLICT (cenario_id, periodo) DO UPDATE
+           SET dias_uteis = EXCLUDED.dias_uteis,
+               arredondado_manual = COALESCE($5, cenario_periodo.arredondado_manual)`,
+        [cenarioId, p.periodo, p.ordem ?? null, p.diasUteis, p.arredondadoManual ?? null],
       );
     }
     for (const k of componentes) {

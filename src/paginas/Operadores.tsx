@@ -25,25 +25,14 @@ type Heat = {
  * Cada célula traz o número (rótulo direto), o que também resolve o contraste baixo dos
  * passos claros contra a superfície.
  */
-const RAMPA = [
-  { ate: 2, fundo: 'bg-blue-100', texto: 'text-slate-900' },
-  { ate: 5, fundo: 'bg-blue-200', texto: 'text-slate-900' },
-  { ate: Infinity, fundo: 'bg-blue-400', texto: 'text-slate-900' },
-] as const
-
 function estiloDaCelula(horas: number, jornadaLiquida: number, jornadaCheia: number) {
-  if (horas <= 0) return { fundo: 'bg-white', texto: 'text-slate-300', estado: null }
-  if (horas > jornadaCheia) {
-    return { fundo: 'bg-red-100', texto: 'text-red-900', estado: 'critico' as const }
-  }
-  if (horas > jornadaLiquida) {
-    return { fundo: 'bg-amber-100', texto: 'text-amber-900', estado: 'atencao' as const }
-  }
-  if (horas >= jornadaLiquida - 0.5) {
-    return { fundo: 'bg-blue-600', texto: 'text-white', estado: null }
-  }
-  const faixa = RAMPA.find((f) => horas <= f.ate)!
-  return { fundo: faixa.fundo, texto: faixa.texto, estado: null }
+  if (horas <= 0) return { classe: 'heat-0', estado: null }
+  if (horas > jornadaCheia) return { classe: 'heat-critico', estado: 'critico' as const }
+  if (horas > jornadaLiquida) return { classe: 'heat-atencao', estado: 'atencao' as const }
+  if (horas >= jornadaLiquida - 0.5) return { classe: 'heat-4', estado: null }
+  if (horas <= 2) return { classe: 'heat-1', estado: null }
+  if (horas <= 5) return { classe: 'heat-2', estado: null }
+  return { classe: 'heat-3', estado: null }
 }
 
 export function Operadores() {
@@ -162,7 +151,7 @@ export function Operadores() {
                         return (
                           <td
                             key={i}
-                            className={`${s.fundo} ${s.texto} text-center tabular-nums px-2 py-1.5 rounded relative group`}
+                            className={`${s.classe} text-center tabular-nums px-2 py-1.5 rounded`}
                             title={
                               `Operador ${i + 1} · ${fmtData(dia.data)}\n` +
                               `${fmtDecimal(horas)} h de ${fmtDecimal(dados.jornadaLiquida)} h` +
@@ -215,25 +204,25 @@ function Legenda({
     <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
       <span className="label-overline">Ocupação</span>
       <div className="flex items-center gap-1">
-        <span className="h-3.5 w-5 rounded bg-white border border-slate-200" />
+        <span className="h-3.5 w-5 rounded heat-0 border border-slate-200" />
         <span>livre</span>
       </div>
       <div className="flex items-center gap-0.5">
-        <span className="h-3.5 w-5 rounded bg-blue-100" />
-        <span className="h-3.5 w-5 rounded bg-blue-200" />
-        <span className="h-3.5 w-5 rounded bg-blue-400" />
-        <span className="h-3.5 w-5 rounded bg-blue-600" />
+        <span className="h-3.5 w-5 rounded heat-1" />
+        <span className="h-3.5 w-5 rounded heat-2" />
+        <span className="h-3.5 w-5 rounded heat-3" />
+        <span className="h-3.5 w-5 rounded heat-4" />
         <span className="ml-1">até {fmtDecimal(jornadaLiquida)} h</span>
       </div>
       <div className="flex items-center gap-1">
-        <span className="h-3.5 w-5 rounded bg-amber-100 inline-flex items-center justify-center">
-          <AlertTriangle size={9} className="text-amber-900" />
+        <span className="h-3.5 w-5 rounded heat-atencao inline-flex items-center justify-center">
+          <AlertTriangle size={9} />
         </span>
         <span>acima da jornada</span>
       </div>
       <div className="flex items-center gap-1">
-        <span className="h-3.5 w-5 rounded bg-red-100 inline-flex items-center justify-center">
-          <OctagonAlert size={9} className="text-red-900" />
+        <span className="h-3.5 w-5 rounded heat-critico inline-flex items-center justify-center">
+          <OctagonAlert size={9} />
         </span>
         <span>acima de {fmtDecimal(jornadaCheia)} h</span>
       </div>

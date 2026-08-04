@@ -30,10 +30,18 @@ async function handler(req, res) {
 }
 
 async function obter(cenarioId, res) {
+  const [cenario] = (
+    await query('SELECT id, nome, tipo, mes, ano FROM cenario WHERE id = $1', [cenarioId])
+  ).rows;
+  if (!cenario) return res.status(404).json({ erro: 'Cenário não encontrado' });
+
   const [projecao] = (
     await query('SELECT * FROM projecao WHERE cenario_id = $1', [cenarioId])
   ).rows;
-  if (!projecao) return res.json({ projecao: null, semanas: [], slots: [] });
+
+  // Sem projeção não é erro: o cenário simplesmente ainda não tem calendário montado.
+  // Devolvemos o mês/ano dele para a tela poder criar com um clique.
+  if (!projecao) return res.json({ cenario, projecao: null, semanas: [], slots: [] });
 
   const { rows: slots } = await query(
     `SELECT s.id, s.data::text, s.bloco, s.ordem, s.sku_codigo, s.quantidade,
@@ -46,6 +54,7 @@ async function obter(cenarioId, res) {
   );
 
   res.json({
+    cenario,
     projecao,
     semanas: gradeDoMes(projecao.mes, projecao.ano),
     slots,

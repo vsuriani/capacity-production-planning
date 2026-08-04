@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Play, Save } from 'lucide-react'
+import { CalendarPlus, Play, Save } from 'lucide-react'
 import { apiPatch, apiPost } from '../lib/api'
 import { useApi, useCenarioSelecionado } from '../lib/hooks'
 import { MESES, fmtData, fmtDiaSemana, fmtInt } from '../lib/formato'
@@ -8,6 +8,7 @@ import { PainelDiagnostico } from '../components/Diagnostico'
 import { Carregando, Erro, Kpi, SeletorCenario } from '../components/comuns'
 
 type Dados = {
+  cenario: { id: number; nome: string; mes: number | null; ano: number | null }
   projecao: { id: number; mes: number; ano: number; qtd_operadores: number } | null
   semanas: { semana: number; dias: string[] }[]
   slots: SlotProjecao[]
@@ -38,6 +39,26 @@ export function Calendario() {
   const [rascunho, setRascunho] = useState<Rascunho>(new Map())
   const [erroAcao, setErroAcao] = useState<string | null>(null)
   const [gerando, setGerando] = useState(false)
+  const [criando, setCriando] = useState(false)
+
+  async function criarCalendario() {
+    if (!id || !dados?.cenario) return
+    const { mes, ano } = dados.cenario
+    if (!mes || !ano) {
+      setErroAcao('Este cenário não tem mês definido — só cenários mensais têm calendário.')
+      return
+    }
+    setCriando(true)
+    setErroAcao(null)
+    try {
+      await apiPatch(`projecao?cenario=${id}`, { mes, ano, qtdOperadores: 8 })
+      recarregar()
+    } catch (e) {
+      setErroAcao((e as Error).message)
+    } finally {
+      setCriando(false)
+    }
+  }
   const [resultado, setResultado] = useState<{
     geradas: number
     diagnosticos: Diagnostico[]
@@ -148,9 +169,20 @@ export function Calendario() {
       {carregando && !dados ? (
         <Carregando />
       ) : !dados?.projecao ? (
-        <div className="empty-state">
-          Este cenário não tem calendário — importe a planilha ou crie a projeção.
-        </div>
+        <section className="panel p-10 text-center">
+          <CalendarPlus size={22} className="mx-auto mb-3 text-slate-400" strokeWidth={1.5} />
+          <p className="text-sm text-slate-600 mb-1">
+            <strong>{dados?.cenario.nome}</strong> ainda não tem calendário montado.
+          </p>
+          <p className="text-xs text-slate-500 mb-4">
+            A grade nasce com as 5 semanas do mês (seg–sáb, da primeira segunda-feira) e os
+            blocos de Produção e Industrialização vazios, prontos para receber os códigos SAP.
+          </p>
+          <button className="btn-primary mx-auto" onClick={criarCalendario} disabled={criando}>
+            <CalendarPlus size={15} />
+            {criando ? 'Criando…' : `Criar calendário de ${dados?.cenario.nome}`}
+          </button>
+        </section>
       ) : (
         <div className="space-y-6">
           <div className="panel px-4 py-3 flex flex-wrap items-end gap-4">

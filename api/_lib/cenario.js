@@ -34,7 +34,7 @@ async function carregarCenario(cenarioId) {
 
   const [periodos, metas, demandas, termos, componentes, dispositivos] = await Promise.all([
     query(
-      `SELECT periodo, ordem, dias_uteis FROM cenario_periodo
+      `SELECT periodo, ordem, dias_uteis, arredondado_manual FROM cenario_periodo
         WHERE cenario_id = $1 ORDER BY ordem`,
       [cenarioId],
     ),
@@ -143,7 +143,7 @@ function calcularCenario(dados) {
       parametros,
       correcoes: cenario.correcoes || {},
       aplicarExcedente: ehCapacidade,
-      arredondadoManual: null,
+      arredondadoManual: p.arredondado_manual ?? null,
     });
     return { periodo: p.periodo, ordem: p.ordem, diasUteis: Number(p.dias_uteis), ...r };
   });

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { Inicio } from './paginas/Inicio'
 import { Capacidade } from './paginas/Capacidade'
 import { Planejamento } from './paginas/Planejamento'
 import { Calendario } from './paginas/Calendario'
@@ -14,7 +15,9 @@ export function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/capacidade" replace />} />
+        <Route path="/" element={<Navigate to="/inicio" replace />} />
+
+        <Route path="/inicio" element={<Inicio />} />
 
         <Route path="/capacidade" element={<Capacidade />} />
         <Route
@@ -44,7 +47,7 @@ export function App() {
         <Route path="/cenarios" element={<Cenarios />} />
         <Route path="/importar" element={<Importar />} />
 
-        <Route path="*" element={<Navigate to="/capacidade" replace />} />
+        <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Route>
     </Routes>
   )
