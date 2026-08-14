@@ -88,10 +88,8 @@ fora do repositório**, em `~/.secrets/`. Nunca comite chave — ver
 
 | Rota | Equivale a | O que faz |
 |---|---|---|
-| `/inicio` | — | Dashboard: headcount de pico por cenário, carga dos próximos dias, pendências |
-| `/capacidade` | 🚧 Dimensionamento Global | Composição da métrica por dispositivo, demanda mensal, headcount com excedente |
+| `/inicio` | — | Dashboard: headcount de pico do semanal, carga dos próximos dias, pendências |
 | `/semanal` | Planejamento Semanal | Meta + demanda pelas semanas do mês, dias úteis, operadores |
-| `/mensal` | Planejamento Mensal | O mesmo, no mês corrente |
 | `/calendario` | Projeção das linhas | Grade 5 semanas × 6 dias, blocos Produção e Industrialização, **Gerar demanda** |
 | `/demandas` | Demandas Defasagem | Lista editável, checkbox "feito" funcional, filtros, exportar CSV |
 | `/operadores` | Dimensionamento de Operadores | Heat map de ocupação dia × operador |
@@ -108,8 +106,13 @@ Tema claro e escuro, com toggle no pé da sidebar.
 
 ### Cenários
 
-Um cenário é o recorte de planejamento: **tipo** (capacidade / semanal / mensal) + **mês**. A tela
-abre no mês corrente e os outros ficam no seletor como histórico.
+Um cenário é o recorte de planejamento: **tipo** + **mês**. A tela abre no mês corrente e os outros
+ficam no seletor como histórico.
+
+**Semanal** é a única tela de planejamento. O tipo `mensal` não tem tela: é o cenário que carrega o
+**calendário, a lista de demanda e a alocação** do mês (`/calendario`, `/demandas`, `/operadores`).
+O tipo `capacidade` (aba 🚧 Dimensionamento Global) continua no schema e na importação, mas saiu do
+app — os cenários antigos só aparecem na lista de `/cenarios`.
 
 Isso não é só organização — é o que impede o cálculo de somar meses diferentes. A planilha reusa
 "Week 1".."Week 5" em cada mês (40 colunas, 12 rótulos distintos); escopando por mês, os rótulos

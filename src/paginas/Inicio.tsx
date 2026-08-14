@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowUpRight, BarChart3, CalendarRange, CheckCircle2,
-  ClipboardList, Database, Grid3x3, LayoutGrid, ListTree, Users,
+  AlertTriangle, ArrowUpRight, CalendarRange, CheckCircle2,
+  ClipboardList, Database, LayoutGrid, ListTree, Users,
 } from 'lucide-react'
 import { useApi } from '../lib/hooks'
+import type { TipoCenario } from '../lib/tipos'
 import { fmtData, fmtDecimal, fmtDiaSemana, fmtInt } from '../lib/formato'
 import { Carregando, Erro } from '../components/comuns'
 
@@ -12,7 +13,7 @@ type Resumo = {
   cenarios: {
     id: number
     nome: string
-    tipo: 'capacidade' | 'semanal' | 'mensal'
+    tipo: TipoCenario
     oficial: boolean
     periodos: number
     pico: number | null
@@ -37,12 +38,6 @@ type Resumo = {
   ultimaImportacao: { quando: string; quem: string } | null
 }
 
-const ATALHO_DO_TIPO = {
-  capacidade: { rota: '/capacidade', rotulo: 'Capacidade', Icone: BarChart3 },
-  semanal: { rota: '/semanal', rotulo: 'Semanal', Icone: LayoutGrid },
-  mensal: { rota: '/mensal', rotulo: 'Mensal', Icone: Grid3x3 },
-} as const
-
 function saudacao() {
   const h = new Date().getHours()
   if (h < 12) return 'Bom dia'
@@ -64,6 +59,9 @@ export function Inicio() {
     month: 'long',
   })
 
+  // O Semanal é a única tela de planejamento; o mensal só carrega o calendário do mês.
+  const semanal = (dados?.cenarios ?? []).find((c) => c.tipo === 'semanal')
+
   const pendentes = dados ? dados.demanda.total - dados.demanda.feitas : 0
   const cargaMax = Math.max(1, ...(dados?.proximosDias ?? []).map((d) => d.horas))
 
@@ -83,71 +81,64 @@ export function Inicio() {
         <Carregando linhas={8} />
       ) : !dados ? null : (
         <div className="space-y-5">
-          {/* ---------------- headcount por cenário ---------------- */}
+          {/* ---------------- headcount do cenário semanal ---------------- */}
           <section className="panel overflow-hidden">
             <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">Headcount necessário</h2>
               <span className="label-overline">
-                {dados.totalCenarios} cenário(s) · pico por tipo
+                {dados.totalCenarios} cenário(s) · pico do semanal
               </span>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
-              {dados.cenarios.length === 0 && (
-                <p className="px-4 py-8 text-sm text-slate-500 md:col-span-3 text-center">
-                  Nenhum cenário ainda — rode a importação.
+            {!semanal ? (
+              <p className="px-4 py-8 text-sm text-slate-500 text-center">
+                Nenhum cenário semanal ainda — rode a importação.
+              </p>
+            ) : (
+              <Link
+                to="/semanal"
+                className="block px-5 py-4 hover:bg-slate-50 transition-colors group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <LayoutGrid size={14} className="text-slate-400" strokeWidth={1.75} />
+                  <span className="label-overline">Semanal</span>
+                  {semanal.oficial && <span className="chip-ok">oficial</span>}
+                  <ArrowUpRight
+                    size={13}
+                    className="ml-auto text-slate-300 group-hover:text-primary-700 transition-colors"
+                  />
+                </div>
+
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-heading font-bold tabular-nums">
+                    {semanal.pico === null ? '—' : fmtInt(semanal.pico)}
+                  </span>
+                  <span className="text-sm text-slate-500">operadores</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  no pico{semanal.picoPeriodo ? ` · ${semanal.picoPeriodo}` : ''} ·{' '}
+                  {fmtDecimal(semanal.horas)} h no total
                 </p>
-              )}
-              {dados.cenarios.map((c) => {
-                const atalho = ATALHO_DO_TIPO[c.tipo]
-                return (
-                  <Link
-                    key={c.id}
-                    to={atalho.rota}
-                    className="px-5 py-4 hover:bg-slate-50 transition-colors group"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <atalho.Icone size={14} className="text-slate-400" strokeWidth={1.75} />
-                      <span className="label-overline">{atalho.rotulo}</span>
-                      {c.oficial && <span className="chip-ok">oficial</span>}
-                      <ArrowUpRight
-                        size={13}
-                        className="ml-auto text-slate-300 group-hover:text-primary-700 transition-colors"
-                      />
-                    </div>
 
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-heading font-bold tabular-nums">
-                        {c.pico === null ? '—' : fmtInt(c.pico)}
-                      </span>
-                      <span className="text-sm text-slate-500">operadores</span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      no pico{c.picoPeriodo ? ` · ${c.picoPeriodo}` : ''} ·{' '}
-                      {fmtDecimal(c.horas)} h no total
-                    </p>
-
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {c.diagnosticos > 0 ? (
-                        <span className="chip-warn">
-                          <AlertTriangle size={10} /> {c.diagnosticos} divergência(s)
-                        </span>
-                      ) : (
-                        <span className="chip-ok">
-                          <CheckCircle2 size={10} /> sem divergência
-                        </span>
-                      )}
-                      {c.correcoesLigadas > 0 && (
-                        <span className="chip">{c.correcoesLigadas} correção(ões)</span>
-                      )}
-                      {c.semDiasUteis > 0 && (
-                        <span className="chip-danger">{c.semDiasUteis} sem dias úteis</span>
-                      )}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {semanal.diagnosticos > 0 ? (
+                    <span className="chip-warn">
+                      <AlertTriangle size={10} /> {semanal.diagnosticos} divergência(s)
+                    </span>
+                  ) : (
+                    <span className="chip-ok">
+                      <CheckCircle2 size={10} /> sem divergência
+                    </span>
+                  )}
+                  {semanal.correcoesLigadas > 0 && (
+                    <span className="chip">{semanal.correcoesLigadas} correção(ões)</span>
+                  )}
+                  {semanal.semDiasUteis > 0 && (
+                    <span className="chip-danger">{semanal.semDiasUteis} sem dias úteis</span>
+                  )}
+                </div>
+              </Link>
+            )}
           </section>
 
           {/* ---------------- carga dos próximos dias + pendências ---------------- */}

@@ -202,10 +202,31 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 - 2026-08 — A importação **mescla** os SKU duplicados da Base de PROD (216 linhas, 199 códigos)
   mantendo o valor não vazio de cada campo, e nunca sobrescreve descrição preenchida com vazia.
 - 2026-08 — **Cenário é escopado a um mês** (decisão do usuário). A tela Semanal mostra só as
-  **Semana 1–5 do mês** — as mesmas que `gradeDoMes()` monta para o Calendário — e a Mensal mostra
-  só o **mês corrente**. Outros meses viram cenários salvos (histórico), selecionáveis no topo.
+  **Semana 1–5 do mês** — as mesmas que `gradeDoMes()` monta para o Calendário. Outros meses viram
+  cenários salvos (histórico), selecionáveis no topo.
   Isso resolve de raiz o bug de chave de período: a planilha reusa "Week 1".."Week 5" em cada mês
   (40 colunas, 12 rótulos distintos), e dentro de um único mês os rótulos não repetem.
+- 2026-08-14 — **A tela Planejamento Mensal saiu do front** (decisão do usuário): o headcount por
+  mês era a mesma conta do Semanal com outro recorte. O que ficou:
+  - `Planejamento.tsx` deixou de ser parametrizado por tipo — é a tela Semanal, e só.
+  - O tipo de cenário `mensal` **continua existindo** e é o portador do calendário, da lista de
+    demanda e da alocação do mês (`useCenarioSelecionado('mensal')` em `Calendario`, `Demandas` e
+    `Operadores`; é nele que `importar_planilha.py` pendura `projecao`/`demandaProcesso`/`alocacao`).
+    Por isso `Novo cenário → Mensal` segue em `/cenarios`: é o que dá calendário a um mês novo.
+  - Sem migration e sem mexer nas fixtures: `tipo_cenario` mantém `'mensal'`, e os testes de
+    fidelidade do motor continuam batendo contra a aba *Planejamento Mensal* da planilha de origem.
+  - Efeito colateral conhecido: as `correcoes` de um cenário mensal ficaram sem UI para alternar —
+    os painéis de diagnóstico de `Calendario`/`Operadores` são somente leitura.
+- 2026-08-14 — **A tela Capacidade saiu do front** (decisão do usuário), mesmo padrão do Mensal:
+  `src/paginas/Capacidade.tsx` foi apagada, a rota `/capacidade` e o item da sidebar saíram, e o
+  `Novo cenário` de `/cenarios` não oferece mais o tipo — todo cenário criado no app tem mês.
+  O `Início` mostra só o card do Semanal.
+  - Continua tudo no back: o tipo `capacidade` no enum, `parse_global()` no importador, a
+    `metrica_componente`, o `aplicarExcedente` de `operadores.js` e o desvio `excedente-so-no-global`
+    (alternável na tela Semanal). Os cenários de capacidade importados seguem visíveis em
+    `/cenarios`.
+  - Ficou sem UI: editar a composição da métrica (`PATCH /api/planejamento` com `componentes`) — era
+    só nessa tela. O endpoint continua de pé.
 
 ---
 

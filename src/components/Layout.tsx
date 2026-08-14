@@ -1,22 +1,20 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  BarChart3, CalendarRange, ClipboardList, Database, Download, GitCompare,
-  Grid3x3, Home, LayoutGrid, ListTree, Moon, Sun, Users,
+  CalendarRange, ClipboardList, Database, Download, GitCompare,
+  Home, LayoutGrid, ListTree, Moon, Sun, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
 import { useTema } from '../lib/tema'
 
-type Secao = { titulo: string; itens: { para: string; rotulo: string; Icone: typeof BarChart3 }[] }
+type Secao = { titulo: string; itens: { para: string; rotulo: string; Icone: typeof Home }[] }
 
 const SECOES: Secao[] = [
   {
     titulo: 'Planejamento',
     itens: [
       { para: '/inicio', rotulo: 'Início', Icone: Home },
-      { para: '/capacidade', rotulo: 'Capacidade', Icone: BarChart3 },
       { para: '/semanal', rotulo: 'Semanal', Icone: LayoutGrid },
-      { para: '/mensal', rotulo: 'Mensal', Icone: Grid3x3 },
     ],
   },
   {

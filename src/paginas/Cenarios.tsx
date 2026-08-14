@@ -14,6 +14,12 @@ type Comparacao = {
   }[]
 }
 
+/**
+ * A lista mostra só o cenário em uso: o semanal de Agosto/2026. Os outros — capacidade,
+ * mensal e os demais meses importados — continuam no banco, só não aparecem aqui.
+ */
+const SO_ESTE = { tipo: 'semanal', mes: 8, ano: 2026 } as const
+
 /** Cenários: listar, duplicar, marcar oficial e comparar headcount lado a lado. */
 export function Cenarios() {
   const { dados, erro, carregando, recarregar } = useApi<{ cenarios: Cenario[] }>('cenarios')
@@ -31,12 +37,12 @@ export function Cenarios() {
 
   async function criar() {
     await agir(async () => {
-      const corpo: Record<string, unknown> = { tipo: novo.tipo, nome: novo.nome || undefined }
-      if (novo.tipo !== 'capacidade') {
-        corpo.mes = novo.mes
-        corpo.ano = novo.ano
-      }
-      await apiPost('cenarios', corpo)
+      await apiPost('cenarios', {
+        tipo: novo.tipo,
+        nome: novo.nome || undefined,
+        mes: novo.mes,
+        ano: novo.ano,
+      })
       setCriando(false)
       setNovo({ ...novo, nome: '' })
     })
@@ -45,6 +51,7 @@ export function Cenarios() {
   const porTipo = useMemo(() => {
     const mapa = new Map<string, Cenario[]>()
     for (const c of dados?.cenarios ?? []) {
+      if (c.tipo !== SO_ESTE.tipo || c.mes !== SO_ESTE.mes || c.ano !== SO_ESTE.ano) continue
       if (!mapa.has(c.tipo)) mapa.set(c.tipo, [])
       mapa.get(c.tipo)!.push(c)
     }
@@ -128,45 +135,38 @@ export function Cenarios() {
               >
                 <option value="semanal">Semanal</option>
                 <option value="mensal">Mensal</option>
-                <option value="capacidade">Capacidade</option>
               </select>
             </label>
 
-            {novo.tipo !== 'capacidade' && (
-              <>
-                <label className="block">
-                  <span className="label-overline">Mês</span>
-                  <select
-                    className="input-field w-40"
-                    value={novo.mes}
-                    onChange={(e) => setNovo({ ...novo, mes: Number(e.target.value) })}
-                  >
-                    {MESES.map((m, i) => (
-                      <option key={m} value={i + 1}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="label-overline">Ano</span>
-                  <input
-                    type="number"
-                    className="input-field w-28"
-                    value={novo.ano}
-                    onChange={(e) => setNovo({ ...novo, ano: Number(e.target.value) })}
-                  />
-                </label>
-              </>
-            )}
+            <label className="block">
+              <span className="label-overline">Mês</span>
+              <select
+                className="input-field w-40"
+                value={novo.mes}
+                onChange={(e) => setNovo({ ...novo, mes: Number(e.target.value) })}
+              >
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="label-overline">Ano</span>
+              <input
+                type="number"
+                className="input-field w-28"
+                value={novo.ano}
+                onChange={(e) => setNovo({ ...novo, ano: Number(e.target.value) })}
+              />
+            </label>
 
             <label className="block flex-1 min-w-48">
               <span className="label-overline">Nome (opcional)</span>
               <input
                 className="input-field"
-                placeholder={
-                  novo.tipo === 'capacidade' ? 'Novo cenário' : `${MESES[novo.mes - 1]}/${novo.ano}`
-                }
+                placeholder={`${MESES[novo.mes - 1]}/${novo.ano}`}
                 value={novo.nome}
                 onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
               />

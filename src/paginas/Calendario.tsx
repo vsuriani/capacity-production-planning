@@ -302,7 +302,7 @@ export function Calendario() {
               diagnosticos={resultado.diagnosticos}
               correcoes={cenarios.find((c) => c.id === id)?.correcoes ?? {}}
               onAlternar={() => {
-                /* correções são do cenário — ajuste em Semanal/Mensal */
+                /* correções são do cenário — aqui o painel é somente leitura */
               }}
             />
           )}

@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Inicio } from './paginas/Inicio'
-import { Capacidade } from './paginas/Capacidade'
 import { Planejamento } from './paginas/Planejamento'
 import { Calendario } from './paginas/Calendario'
 import { Demandas } from './paginas/Demandas'
@@ -19,23 +18,7 @@ export function App() {
 
         <Route path="/inicio" element={<Inicio />} />
 
-        <Route path="/capacidade" element={<Capacidade />} />
-        <Route
-          path="/semanal"
-          element={
-            <Planejamento
-              tipo="semanal"
-              titulo="Cenário semanal"
-              abaOrigem="Planejamento Semanal"
-            />
-          }
-        />
-        <Route
-          path="/mensal"
-          element={
-            <Planejamento tipo="mensal" titulo="Cenário mensal" abaOrigem="Planejamento Mensal" />
-          }
-        />
+        <Route path="/semanal" element={<Planejamento />} />
 
         <Route path="/calendario" element={<Calendario />} />
         <Route path="/demandas" element={<Demandas />} />

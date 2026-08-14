@@ -183,7 +183,7 @@ export function Operadores() {
               diagnosticos={diagnosticos}
               correcoes={cenarios.find((c) => c.id === id)?.correcoes ?? {}}
               onAlternar={() => {
-                /* as correções da alocação são as do cenário: ajuste em Semanal/Mensal */
+                /* as correções da alocação são as do cenário: aqui o painel é somente leitura */
               }}
             />
           )}

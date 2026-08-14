@@ -4,27 +4,19 @@ import { GitCompare, Wand2 } from 'lucide-react'
 import { apiPatch, apiPost } from '../lib/api'
 import { useApi, useCenarioSelecionado, useCorrecoes } from '../lib/hooks'
 import { fmtDecimal, fmtInt } from '../lib/formato'
-import type { DetalheCenario, TipoCenario } from '../lib/tipos'
+import type { DetalheCenario } from '../lib/tipos'
 import { PainelDiagnostico } from '../components/Diagnostico'
 import { Carregando, CelulaNumero, Erro, Kpi, SeletorCenario } from '../components/comuns'
 
 /**
- * Grade de planejamento: uma linha por dispositivo (Meta + demanda por período) e, no pé,
- * a carga em horas e o headcount calculado.
+ * Grade de planejamento semanal: uma linha por dispositivo (Meta + demanda por semana) e,
+ * no pé, a carga em horas e o headcount calculado.
  *
- * Semanal e Mensal têm exatamente a mesma estrutura na planilha — muda só o conjunto de
- * dispositivos e de períodos. Por isso a tela é a mesma, parametrizada pelo tipo.
+ * Equivale à aba Planejamento Semanal, escopada ao mês do cenário — as Semana 1–5 são as
+ * mesmas que o Calendário monta.
  */
-export function Planejamento({
-  tipo,
-  titulo,
-  abaOrigem,
-}: {
-  tipo: TipoCenario
-  titulo: string
-  abaOrigem: string
-}) {
-  const { cenarios, id, setId } = useCenarioSelecionado(tipo)
+export function Planejamento() {
+  const { cenarios, id, setId } = useCenarioSelecionado('semanal')
   const { dados, erro, carregando, recarregar } = useApi<DetalheCenario>(
     id ? `cenarios?id=${id}` : null,
   )
@@ -87,9 +79,9 @@ export function Planejamento({
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">{titulo}</h1>
+          <h1 className="page-title">Cenário semanal</h1>
           <p className="page-subtitle">
-            Equivale à aba {abaOrigem}. O cálculo é fiel à planilha; as divergências
+            Equivale à aba Planejamento Semanal. O cálculo é fiel à planilha; as divergências
             conhecidas estão no diagnóstico abaixo.
           </p>
         </div>
@@ -106,7 +98,7 @@ export function Planejamento({
       {carregando && !dados ? (
         <Carregando />
       ) : !dados ? (
-        <div className="empty-state">Nenhum cenário {tipo} — importe a planilha primeiro.</div>
+        <div className="empty-state">Nenhum cenário semanal — importe a planilha primeiro.</div>
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
