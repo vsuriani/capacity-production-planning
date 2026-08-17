@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowUpRight, CalendarRange, CheckCircle2,
-  ClipboardList, Database, LayoutGrid, ListTree, Users,
+  ArrowUpRight, CalendarRange, ClipboardList, Database, LayoutGrid, ListTree, Users,
 } from 'lucide-react'
 import { useApi } from '../lib/hooks'
 import type { TipoCenario } from '../lib/tipos'
@@ -22,6 +21,13 @@ type Resumo = {
     diagnosticos: number
     correcoesLigadas: number
     semDiasUteis: number
+    /** Semana do mês que contém hoje. Null quando o cenário não é do mês corrente. */
+    semanaVigente: {
+      periodo: string
+      operadores: number | null
+      horas: number
+      erro: string | null
+    } | null
   }[]
   totalCenarios: number
   cadastro: { sku: number; produto: number; processo: number; mapeamentos: number; feriados: number }
@@ -62,6 +68,12 @@ export function Inicio() {
   // O Semanal é a única tela de planejamento; o mensal só carrega o calendário do mês.
   const semanal = (dados?.cenarios ?? []).find((c) => c.tipo === 'semanal')
 
+  // O número do card é o da semana vigente. Só cai no pico do mês quando o cenário em uso
+  // não é do mês corrente — aí não existe "semana vigente" para mostrar.
+  const operadores = semanal?.semanaVigente
+    ? semanal.semanaVigente.operadores
+    : semanal?.pico ?? null
+
   const pendentes = dados ? dados.demanda.total - dados.demanda.feitas : 0
   const cargaMax = Math.max(1, ...(dados?.proximosDias ?? []).map((d) => d.horas))
 
@@ -86,7 +98,8 @@ export function Inicio() {
             <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">Headcount necessário</h2>
               <span className="label-overline">
-                {dados.totalCenarios} cenário(s) · pico do semanal
+                {dados.totalCenarios} cenário(s) ·{' '}
+                {semanal?.semanaVigente ? 'semana vigente' : 'pico do semanal'}
               </span>
             </header>
 
@@ -111,25 +124,27 @@ export function Inicio() {
 
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl font-heading font-bold tabular-nums">
-                    {semanal.pico === null ? '—' : fmtInt(semanal.pico)}
+                    {operadores === null ? '—' : fmtInt(operadores)}
                   </span>
                   <span className="text-sm text-slate-500">operadores</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  no pico{semanal.picoPeriodo ? ` · ${semanal.picoPeriodo}` : ''} ·{' '}
-                  {fmtDecimal(semanal.horas)} h no total
+                  {semanal.semanaVigente ? (
+                    <>
+                      esta semana · {semanal.semanaVigente.periodo} ·{' '}
+                      {semanal.semanaVigente.erro
+                        ? 'sem dias úteis'
+                        : `${fmtDecimal(semanal.semanaVigente.horas)} h na semana`}
+                    </>
+                  ) : (
+                    <>
+                      no pico{semanal.picoPeriodo ? ` · ${semanal.picoPeriodo}` : ''} ·{' '}
+                      {fmtDecimal(semanal.horas)} h no total
+                    </>
+                  )}
                 </p>
 
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {semanal.diagnosticos > 0 ? (
-                    <span className="chip-warn">
-                      <AlertTriangle size={10} /> {semanal.diagnosticos} divergência(s)
-                    </span>
-                  ) : (
-                    <span className="chip-ok">
-                      <CheckCircle2 size={10} /> sem divergência
-                    </span>
-                  )}
                   {semanal.correcoesLigadas > 0 && (
                     <span className="chip">{semanal.correcoesLigadas} correção(ões)</span>
                   )}

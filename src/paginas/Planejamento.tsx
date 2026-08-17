@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GitCompare, Wand2 } from 'lucide-react'
-import { apiPatch, apiPost } from '../lib/api'
-import { useApi, useCenarioSelecionado, useCorrecoes } from '../lib/hooks'
+import { GitCompare } from 'lucide-react'
+import { apiPatch } from '../lib/api'
+import { useApi, useCenarioSelecionado } from '../lib/hooks'
 import { fmtDecimal, fmtInt } from '../lib/formato'
 import type { DetalheCenario } from '../lib/tipos'
-import { PainelDiagnostico } from '../components/Diagnostico'
 import { Carregando, CelulaNumero, Erro, Kpi, SeletorCenario } from '../components/comuns'
 
 /**
@@ -19,11 +18,6 @@ export function Planejamento() {
   const { cenarios, id, setId } = useCenarioSelecionado('semanal')
   const { dados, erro, carregando, recarregar } = useApi<DetalheCenario>(
     id ? `cenarios?id=${id}` : null,
-  )
-  const { alternar, salvando, erro: erroCorrecao } = useCorrecoes(
-    id,
-    dados?.cenario.correcoes ?? {},
-    recarregar,
   )
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
 
@@ -54,17 +48,6 @@ export function Planejamento() {
     }
   }
 
-  async function acao(nome: 'alinhar-termos' | 'incluir-faltantes') {
-    if (!id) return
-    setErroSalvar(null)
-    try {
-      await apiPost(`planejamento?acao=${nome}`, { cenarioId: id })
-      recarregar()
-    } catch (e) {
-      setErroSalvar((e as Error).message)
-    }
-  }
-
   const total = useMemo(() => {
     const rs = dados?.resultados ?? []
     const validos = rs.filter((r) => r.operadores !== null)
@@ -81,8 +64,8 @@ export function Planejamento() {
         <div>
           <h1 className="page-title">Cenário semanal</h1>
           <p className="page-subtitle">
-            Equivale à aba Planejamento Semanal. O cálculo é fiel à planilha; as divergências
-            conhecidas estão no diagnóstico abaixo.
+            Equivale à aba Planejamento Semanal. O cálculo é fiel à planilha — o catálogo das
+            divergências conhecidas está em Importação.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -93,7 +76,7 @@ export function Planejamento() {
         </div>
       </div>
 
-      <Erro mensagem={erro ?? erroCorrecao ?? erroSalvar} />
+      <Erro mensagem={erro ?? erroSalvar} />
 
       {carregando && !dados ? (
         <Carregando />
@@ -114,16 +97,8 @@ export function Planejamento() {
           </div>
 
           <section className="panel overflow-hidden">
-            <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
+            <header className="px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">Demanda e headcount</h2>
-              <div className="flex gap-2">
-                <button className="btn-ghost" onClick={() => acao('alinhar-termos')}>
-                  <Wand2 size={15} /> Alinhar termos da fórmula
-                </button>
-                <button className="btn-ghost" onClick={() => acao('incluir-faltantes')}>
-                  <Wand2 size={15} /> Incluir dispositivos faltantes
-                </button>
-              </div>
             </header>
 
             <div className="overflow-auto max-h-[70vh]">
@@ -232,13 +207,6 @@ export function Planejamento() {
               </table>
             </div>
           </section>
-
-          <PainelDiagnostico
-            diagnosticos={dados.diagnosticos}
-            correcoes={dados.cenario.correcoes}
-            onAlternar={alternar}
-            salvando={salvando}
-          />
         </div>
       )}
     </>

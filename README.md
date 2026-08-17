@@ -35,11 +35,37 @@ O que a análise encontrou, entre outras coisas:
 ## A decisão que molda o app
 
 **O cálculo é fiel à planilha por padrão.** Cada divergência conhecida (13 hoje) está catalogada
-com o que a planilha faz, o impacto medido e o que muda se for corrigida — e aparece na tela num
-painel de diagnóstico, com um switch por cenário.
+com o que a planilha faz, o impacto medido e o que muda se for corrigida — o catálogo fica em
+`/importar`.
 
-Nada é corrigido em silêncio. A escolha fica gravada no cenário, então dois cenários podem ter
-políticas diferentes e ser comparados lado a lado.
+Nada é corrigido em silêncio: a política de correções continua gravada por cenário (`correcoes`) e
+o motor devolve os diagnósticos em toda rota. O que não existe mais é o switch na tela, então hoje
+todo cenário roda fiel à planilha.
+
+---
+
+## Onde o projeto está
+
+A planilha já foi lida — a carga inicial trouxe cadastros, cenários e a grade, e **o app é a fonte
+da verdade desde então**. O trabalho agora é operar sem ela.
+
+O que já está desvinculado:
+
+- **A operação acontece no app**: cenário, calendário, geração de demanda, lista de demanda e
+  alocação. Nenhuma rota escreve no Google Sheets — nunca escreveu.
+- **Um mês por vez** (`MES_EM_USO`, ver [Cenários](#cenários)). Hoje: **Agosto/2026**, criado e
+  mantido pelo app. Os cenários importados dos outros meses seguem no banco como histórico.
+- **As telas foram enxugadas** para o fluxo semanal: saíram Planejamento Mensal, Capacidade e o
+  painel de diagnóstico por tela.
+
+O que ainda depende da planilha, de propósito:
+
+- `scripts/planilha.py` e `scripts/importar_planilha.py` — a carga inicial, reexecutável se
+  precisar re-sincronizar. **Somente leitura.**
+- As fixtures do motor (`api/_lib/motor/fixtures.json`) e `verificar_agosto.mjs` — é assim que se
+  prova que o cálculo continua batendo com o número que o PCP conhece.
+- [docs/planilha-dimensionamento-de-linha.md](docs/planilha-dimensionamento-de-linha.md) e o
+  catálogo de divergências — a memória de por que o cálculo é como é.
 
 ---
 
@@ -56,7 +82,9 @@ npm run dev          # Vite em :5273 + API em :3101
 ```
 
 Espere a linha `[dev] API em http://localhost:3101` — o primeiro boot do Postgres leva ~40 s.
-Depois, noutro terminal, carregue os dados da planilha:
+
+Num banco vazio, rode a **carga inicial** da planilha (só uma vez; depois o app é a fonte da
+verdade e a importação é idempotente):
 
 ```powershell
 # PowerShell
@@ -88,14 +116,14 @@ fora do repositório**, em `~/.secrets/`. Nunca comite chave — ver
 
 | Rota | Equivale a | O que faz |
 |---|---|---|
-| `/inicio` | — | Dashboard: headcount de pico do semanal, carga dos próximos dias, pendências |
+| `/inicio` | — | Dashboard: headcount da **semana vigente**, carga dos próximos dias, pendências |
 | `/semanal` | Planejamento Semanal | Meta + demanda pelas semanas do mês, dias úteis, operadores |
 | `/calendario` | Projeção das linhas | Grade 5 semanas × 6 dias, blocos Produção e Industrialização, **Gerar demanda** |
 | `/demandas` | Demandas Defasagem | Lista editável, checkbox "feito" funcional, filtros, exportar CSV |
 | `/operadores` | Dimensionamento de Operadores | Heat map de ocupação dia × operador |
 | `/roteiros` | Base simplificada | Processos e sequências, editável |
 | `/sku` | Base de PROD | Catálogo + mapa SKU → produto + pendências |
-| `/cenarios` | — | Criar, duplicar, marcar oficial, comparar headcount |
+| `/cenarios` | — | Criar, duplicar, marcar oficial, comparar headcount — lista o semanal do mês em uso |
 | `/importar` | — | Como importar, histórico e o catálogo de divergências |
 
 Tema claro e escuro, com toggle no pé da sidebar.
@@ -106,8 +134,10 @@ Tema claro e escuro, com toggle no pé da sidebar.
 
 ### Cenários
 
-Um cenário é o recorte de planejamento: **tipo** + **mês**. A tela abre no mês corrente e os outros
-ficam no seletor como histórico.
+Um cenário é o recorte de planejamento: **tipo** + **mês**. O app trabalha em **um mês só**, fixado
+em [src/lib/escopo.ts](src/lib/escopo.ts) (`MES_EM_USO`): o seletor de cenário e a lista de
+`/cenarios` mostram apenas esse mês. Os cenários dos outros meses continuam no banco como
+histórico, acessíveis pela API. Para virar o mês, é essa constante — e só ela.
 
 **Semanal** é a única tela de planejamento. O tipo `mensal` não tem tela: é o cenário que carrega o
 **calendário, a lista de demanda e a alocação** do mês (`/calendario`, `/demandas`, `/operadores`).

@@ -61,7 +61,7 @@ src/                 React 18 + TS + Vite + Tailwind
 |---|---|
 | `me` | e-mail do usuário logado |
 | `cenarios` | listar, detalhar (com cálculo), duplicar, comparar, marcar oficial |
-| `planejamento` | editar meta/demanda/dias úteis/componentes; alinhar termos; incluir faltantes |
+| `planejamento` | editar meta/demanda/dias úteis/componentes; alinhar termos e incluir faltantes (sem UI desde 17/08) |
 | `roteiros` | processos e sequências (Base simplificada) |
 | `sku` | catálogo Base de PROD + mapa SKU→produto + pendências |
 | `projecao` | grade do calendário e geração da demanda |
@@ -77,11 +77,14 @@ src/                 React 18 + TS + Vite + Tailwind
 
 **O app é fiel à planilha por padrão.** Cada divergência conhecida está registrada em
 `api/_lib/motor/desvios.js` (13 hoje) com: o que a planilha faz, o impacto medido e o que muda se
-for corrigida. A UI mostra isso no painel *Diagnóstico* de cada tela.
+for corrigida. O motor continua devolvendo `{ resultado, diagnosticos }` em toda rota; o que saiu
+foi a UI: o painel *Diagnóstico* das telas foi removido (ver §8) e só o catálogo em `/importar`
+mostra as divergências.
 
 Regras:
 
-1. **Nenhum desvio muda de default sozinho.** Ligar a correção é ação do usuário.
+1. **Nenhum desvio muda de default sozinho.** Ligar a correção é ação do usuário — hoje, sem
+   switch na tela, isso significa que todo cenário roda fiel à planilha.
 2. A escolha fica em `cenario.correcoes` (jsonb) — então dois cenários podem ter políticas
    diferentes e ser comparados lado a lado. É esse o "modo comparação".
 3. Um id de desvio desconhecido em `correcoes` **falha alto** (`validarCorrecoes`), para um typo
@@ -227,6 +230,22 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
     `/cenarios`.
   - Ficou sem UI: editar a composição da métrica (`PATCH /api/planejamento` com `componentes`) — era
     só nessa tela. O endpoint continua de pé.
+- 2026-08-17 — **O painel Diagnóstico saiu das telas** (decisão do usuário, escolhendo "só ocultar"
+  em vez de parar de aplicar os desvios). `src/components/Diagnostico.tsx` e o hook `useCorrecoes`
+  foram removidos por ficarem sem uso; Semanal, Calendário e Operadores não renderizam mais nada de
+  diagnóstico. **Nenhum número mudou**: o motor segue fiel à planilha, `desvios.js` intacto, as
+  rotas ainda devolvem `diagnosticos` e `cenario.correcoes` continua no banco. Sem switch na UI,
+  ligar uma correção hoje só por `PATCH /api/cenarios?id=N`.
+- 2026-08-17 — **O app trabalha em um mês só** (decisão do usuário, preparando a operação sem a
+  planilha): `src/lib/escopo.ts` exporta `MES_EM_USO = { mes: 8, ano: 2026 }` e `noMesEmUso()`.
+  `useCenarioSelecionado` filtra por ele, então Semanal, Calendário, Lista de demanda e Operadores
+  só oferecem o cenário desse mês; `/cenarios` usa a mesma função (além do filtro por tipo
+  `semanal`). Os 24 cenários importados da planilha seguem no banco como histórico e continuam
+  acessíveis pela API. **Virar o mês é editar essa constante — e só ela.**
+- 2026-08-17 — **O resumo passou a olhar o cenário do mês corrente e a semana vigente**: antes
+  ordenava por `criado_em` e mostrava o pico do mês, o que fazia o dashboard exibir um cenário
+  vazio de outro mês. `indiceDaSemanaVigente()` usa o `gradeDoMes()` do motor e casa pelo `ordem`
+  do período; `proximosDias` ganhou o corte em `CURRENT_DATE` para não encalhar no vencido.
 
 ---
 

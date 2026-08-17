@@ -3,8 +3,7 @@ import { CalendarPlus, Play, Save } from 'lucide-react'
 import { apiPatch, apiPost } from '../lib/api'
 import { useApi, useCenarioSelecionado } from '../lib/hooks'
 import { MESES, fmtData, fmtDiaSemana, fmtInt } from '../lib/formato'
-import type { Bloco, Diagnostico, SlotProjecao } from '../lib/tipos'
-import { PainelDiagnostico } from '../components/Diagnostico'
+import type { Bloco, SlotProjecao } from '../lib/tipos'
 import { Carregando, Erro, Kpi, SeletorCenario } from '../components/comuns'
 
 type Dados = {
@@ -59,10 +58,7 @@ export function Calendario() {
       setCriando(false)
     }
   }
-  const [resultado, setResultado] = useState<{
-    geradas: number
-    diagnosticos: Diagnostico[]
-  } | null>(null)
+  const [resultado, setResultado] = useState<{ geradas: number } | null>(null)
 
   const slotDe = useMemo(() => {
     const mapa: Rascunho = new Map()
@@ -129,11 +125,7 @@ export function Calendario() {
     setGerando(true)
     setErroAcao(null)
     try {
-      setResultado(
-        await apiPost<{ geradas: number; diagnosticos: Diagnostico[] }>(
-          `projecao?cenario=${id}&acao=gerar`,
-        ),
-      )
+      setResultado(await apiPost<{ geradas: number }>(`projecao?cenario=${id}&acao=gerar`))
     } catch (e) {
       setErroAcao((e as Error).message)
     } finally {
@@ -296,16 +288,6 @@ export function Calendario() {
               </div>
             </section>
           ))}
-
-          {resultado && resultado.diagnosticos.length > 0 && (
-            <PainelDiagnostico
-              diagnosticos={resultado.diagnosticos}
-              correcoes={cenarios.find((c) => c.id === id)?.correcoes ?? {}}
-              onAlternar={() => {
-                /* correções são do cenário — aqui o painel é somente leitura */
-              }}
-            />
-          )}
         </div>
       )}
     </>

@@ -3,6 +3,22 @@
 const { exigirAuth } = require('../_lib/auth');
 const { query } = require('../_lib/db');
 const { carregarCenario, calcularCenario } = require('../_lib/cenario');
+const { gradeDoMes } = require('../_lib/motor/calendario');
+
+/**
+ * Índice (0-based) da semana do mês que contém `hoje`, na mesma grade que o Calendário
+ * monta e que dá os rótulos dos períodos do cenário semanal.
+ *
+ * A grade é seg–sáb: no domingo `hoje` não está em semana nenhuma, então cai para a
+ * semana que começa em seguida.
+ */
+function indiceDaSemanaVigente(hoje) {
+  const [ano, mes] = hoje.split('-').map(Number);
+  const semanas = gradeDoMes(mes, ano);
+  const semana =
+    semanas.find((s) => s.dias.includes(hoje)) ?? semanas.find((s) => s.dias[5] >= hoje);
+  return semana ? semana.semana - 1 : null;
+}
 
 /**
  * Resumo para a tela inicial: uma chamada só, com o essencial de cada área.
@@ -13,10 +29,16 @@ async function handler(req, res) {
   const email = exigirAuth(req, res);
   if (!email) return;
 
-  const [cenarios, cadastro, demanda, proximos, pendencias, importacao] = await Promise.all([
+  const [hojeRows, cenarios, cadastro, demanda, proximos, pendencias, importacao] =
+    await Promise.all([
+    query('SELECT CURRENT_DATE::text AS hoje'),
+    // O cenário do mês corrente vem primeiro: é o que está em uso, não o último criado.
     query(
-      `SELECT id, nome, tipo, oficial, correcoes FROM cenario
-        ORDER BY tipo, oficial DESC, criado_em DESC`,
+      `SELECT id, nome, tipo, mes, ano, oficial, correcoes FROM cenario
+        ORDER BY tipo,
+                 COALESCE(mes = EXTRACT(MONTH FROM CURRENT_DATE)::int
+                      AND  ano = EXTRACT(YEAR  FROM CURRENT_DATE)::int, false) DESC,
+                 oficial DESC, criado_em DESC`,
     ),
     query(
       `SELECT (SELECT count(*) FROM sku)::int              AS sku,
@@ -34,13 +56,15 @@ async function handler(req, res) {
               max(dia_processo)::text                                AS ate
          FROM demanda_processo`,
     ),
-    // Carga por dia nos próximos dias com demanda pendente.
+    // Carga por dia nos próximos dias com demanda pendente. Sem o corte em CURRENT_DATE
+    // o painel encalha nos dias vencidos — o pendente mais antigo, não o que vem pela frente.
     query(
       `SELECT dia_processo::text AS data,
               count(*)::int AS processos,
               COALESCE(sum(tempo_horas), 0)::float AS horas
          FROM demanda_processo
         WHERE NOT feito
+          AND dia_processo >= CURRENT_DATE
         GROUP BY dia_processo
         ORDER BY dia_processo
         LIMIT 8`,
@@ -65,7 +89,12 @@ async function handler(req, res) {
     query('SELECT quando, quem FROM importacao ORDER BY quando DESC LIMIT 1'),
   ]);
 
-  // Headcount de pico e nº de divergências do cenário oficial (ou o 1º) de cada tipo.
+  // Headcount do cenário em uso de cada tipo: o do mês corrente, senão o oficial, senão o
+  // mais recente.
+  const hoje = hojeRows.rows[0].hoje;
+  const [anoHoje, mesHoje] = hoje.split('-').map(Number);
+  const indiceSemana = indiceDaSemanaVigente(hoje);
+
   const porTipo = [];
   const vistos = new Set();
   for (const c of cenarios.rows) {
@@ -76,6 +105,14 @@ async function handler(req, res) {
     if (!dados) continue;
     const { resultados, diagnosticos } = calcularCenario(dados);
     const validos = resultados.filter((r) => r.operadores !== null);
+
+    // A semana vigente só existe se o cenário for mesmo do mês corrente e tiver o período
+    // dessa semana — senão fica null e a tela cai no pico.
+    const doMes = c.mes === mesHoje && c.ano === anoHoje;
+    const semana =
+      doMes && indiceSemana !== null
+        ? resultados.find((r) => r.ordem === indiceSemana) ?? null
+        : null;
 
     porTipo.push({
       id: c.id,
@@ -91,6 +128,12 @@ async function handler(req, res) {
       diagnosticos: diagnosticos.length,
       correcoesLigadas: Object.values(c.correcoes || {}).filter(Boolean).length,
       semDiasUteis: resultados.filter((r) => r.erro).length,
+      semanaVigente: semana && {
+        periodo: semana.periodo,
+        operadores: semana.operadores,
+        horas: semana.horasTotais,
+        erro: semana.erro,
+      },
     });
   }
 

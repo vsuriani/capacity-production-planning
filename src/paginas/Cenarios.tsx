@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Copy, Plus, Star, Trash2 } from 'lucide-react'
 import { apiDelete, apiGet, apiPatch, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
+import { noMesEmUso } from '../lib/escopo'
 import { MESES, fmtData, fmtDecimal, fmtInt } from '../lib/formato'
 import type { Cenario, TipoCenario } from '../lib/tipos'
 import { Carregando, Erro } from '../components/comuns'
@@ -13,12 +14,6 @@ type Comparacao = {
     totalDiagnosticos: number
   }[]
 }
-
-/**
- * A lista mostra só o cenário em uso: o semanal de Agosto/2026. Os outros — capacidade,
- * mensal e os demais meses importados — continuam no banco, só não aparecem aqui.
- */
-const SO_ESTE = { tipo: 'semanal', mes: 8, ano: 2026 } as const
 
 /** Cenários: listar, duplicar, marcar oficial e comparar headcount lado a lado. */
 export function Cenarios() {
@@ -48,10 +43,12 @@ export function Cenarios() {
     })
   }
 
+  // Só o semanal do mês em uso. Os outros tipos e os demais meses importados continuam no
+  // banco, fora da lista.
   const porTipo = useMemo(() => {
     const mapa = new Map<string, Cenario[]>()
     for (const c of dados?.cenarios ?? []) {
-      if (c.tipo !== SO_ESTE.tipo || c.mes !== SO_ESTE.mes || c.ano !== SO_ESTE.ano) continue
+      if (c.tipo !== 'semanal' || !noMesEmUso(c)) continue
       if (!mapa.has(c.tipo)) mapa.set(c.tipo, [])
       mapa.get(c.tipo)!.push(c)
     }

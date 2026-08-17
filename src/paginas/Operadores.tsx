@@ -3,8 +3,6 @@ import { AlertTriangle, OctagonAlert, RefreshCw } from 'lucide-react'
 import { apiPost } from '../lib/api'
 import { useApi, useCenarioSelecionado } from '../lib/hooks'
 import { fmtDecimal, fmtData, fmtDiaSemana, fmtInt } from '../lib/formato'
-import type { Diagnostico } from '../lib/tipos'
-import { PainelDiagnostico } from '../components/Diagnostico'
 import { Carregando, Erro, Kpi, SeletorCenario } from '../components/comuns'
 
 type Heat = {
@@ -42,17 +40,13 @@ export function Operadores() {
   )
   const [recalculando, setRecalculando] = useState(false)
   const [erroCalc, setErroCalc] = useState<string | null>(null)
-  const [diagnosticos, setDiagnosticos] = useState<Diagnostico[]>([])
 
   async function recalcular() {
     if (!id) return
     setRecalculando(true)
     setErroCalc(null)
     try {
-      const r = await apiPost<{ diagnosticos: Diagnostico[] }>(
-        `alocacao?cenario=${id}&acao=calcular`,
-      )
-      setDiagnosticos(r.diagnosticos)
+      await apiPost(`alocacao?cenario=${id}&acao=calcular`)
       recarregar()
     } catch (e) {
       setErroCalc((e as Error).message)
@@ -177,16 +171,6 @@ export function Operadores() {
               </table>
             </div>
           </section>
-
-          {diagnosticos.length > 0 && (
-            <PainelDiagnostico
-              diagnosticos={diagnosticos}
-              correcoes={cenarios.find((c) => c.id === id)?.correcoes ?? {}}
-              onAlternar={() => {
-                /* as correções da alocação são as do cenário: aqui o painel é somente leitura */
-              }}
-            />
-          )}
         </div>
       )}
     </>
