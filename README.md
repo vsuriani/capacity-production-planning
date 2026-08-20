@@ -46,17 +46,34 @@ todo cenário roda fiel à planilha.
 
 ## Onde o projeto está
 
-A planilha já foi lida — a carga inicial trouxe cadastros, cenários e a grade, e **o app é a fonte
-da verdade desde então**. O trabalho agora é operar sem ela.
+A planilha já foi lida — a carga inicial trouxe cadastros, cenários e a grade — e **o banco não tem
+mais nenhum cenário importado**. O que está no ar foi criado e é mantido pelo app.
 
 O que já está desvinculado:
 
 - **A operação acontece no app**: cenário, calendário, geração de demanda, lista de demanda e
   alocação. Nenhuma rota escreve no Google Sheets — nunca escreveu.
-- **Um mês por vez** (`MES_EM_USO`, ver [Cenários](#cenários)). Hoje: **Agosto/2026**, criado e
-  mantido pelo app. Os cenários importados dos outros meses seguem no banco como histórico.
+- **Os cenários são do app.** Agosto/2026 (semanal, oficial + mensal) foi criado pelas rotas, com
+  **Semana 1–5**, dias úteis contados do calendário e termos alinhados. Os 23 cenários importados
+  foram apagados por [scripts/desvincular_planilha.mjs](scripts/desvincular_planilha.mjs).
+- **O headcount é a conta do app.** O cenário importado trazia o número digitado à mão da planilha
+  (`arredondado_manual`) e exibia 8/8/8/8; agora a tela mostra o ROUNDUP do cálculo —
+  **0/8/8/7/0**. Some o desvio `arredondado-manual`; sobra só o `excedente-so-no-global`, mantido
+  fiel à planilha (sem a folga de 20%) por decisão de negócio.
+- **Um mês por vez** (`MES_EM_USO`, ver [Cenários](#cenários)). Hoje: **Agosto/2026**.
 - **As telas foram enxugadas** para o fluxo semanal: saíram Planejamento Mensal, Capacidade e o
   painel de diagnóstico por tela.
+
+### Virar o mês
+
+1. `/cenarios` → **Novo cenário** → Semanal + o mês. Ele nasce com as metas do cenário mais recente,
+   as 5 semanas e os dias úteis já contados.
+2. Repita para o tipo **mensal** — é o cenário que carrega o calendário do mês.
+3. Troque `MES_EM_USO` em [src/lib/escopo.ts](src/lib/escopo.ts).
+4. Monte a grade em `/calendario` → **Gerar demanda** → `/operadores` → **Recalcular**.
+
+> A grade repete a última semana: a **Semana 5 de agosto (31/08–05/09) é a Semana 1 de setembro**.
+> É o comportamento da planilha, preservado em `gradeDoMes()` — cuidado ao lançar demanda nas duas.
 
 O que ainda depende da planilha, de propósito:
 
@@ -116,10 +133,10 @@ fora do repositório**, em `~/.secrets/`. Nunca comite chave — ver
 
 | Rota | Equivale a | O que faz |
 |---|---|---|
-| `/inicio` | — | Dashboard: headcount da **semana vigente**, carga dos próximos dias, pendências |
+| `/inicio` | — | Dashboard: headcount da **semana vigente** e do **mês inteiro**, carga dos próximos dias, pendências |
 | `/semanal` | Planejamento Semanal | Meta + demanda pelas semanas do mês, dias úteis, operadores |
 | `/calendario` | Projeção das linhas | Grade 5 semanas × 6 dias, blocos Produção e Industrialização, **Gerar demanda** |
-| `/demandas` | Demandas Defasagem | Lista editável, checkbox "feito" funcional, filtros, exportar CSV |
+| `/demandas` | Demandas Defasagem | Editável pelo supervisor: datas, tipo, SKU e processo (listas do cadastro), qtd, operadores, Pç/hr e lote. **Tempo é calculado** (Qtd ÷ Pç/hr). Checkbox "feito", filtros, CSV |
 | `/operadores` | Dimensionamento de Operadores | Heat map de ocupação dia × operador |
 | `/roteiros` | Base simplificada | Processos e sequências, editável |
 | `/sku` | Base de PROD | Catálogo + mapa SKU → produto + pendências |
@@ -246,7 +263,8 @@ node scripts/captura.mjs semanal dark .cache/telas/semanal.png
 | Script | Para quê |
 |---|---|
 | `scripts/planilha.py` | leitura e parsing da planilha (somente leitura) |
-| `scripts/importar_planilha.py` | carga inicial → `POST /api/importacao` |
+| `scripts/importar_planilha.py` | carga inicial → `POST /api/importacao` (também é o rollback) |
+| `scripts/desvincular_planilha.mjs` | troca os cenários importados pelos que o app cria |
 | `scripts/dump_sheet.py` | dump de fórmulas/valores/metadados em `.cache/` |
 | `scripts/motor_fixtures.py` | fixtures dos testes a partir do dump |
 | `scripts/check_pairs.py` | confere o alinhamento Meta × Qtd das fórmulas |

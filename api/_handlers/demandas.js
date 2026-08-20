@@ -124,40 +124,53 @@ async function criar(req, res, email) {
   res.json({ id: rows[0].id });
 }
 
+/** Campo do corpo -> coluna. O que não está aqui não é editável pela rota. */
+const CAMPOS_EDITAVEIS = {
+  tipoLinha: 'tipo_linha',
+  diaProcesso: 'dia_processo',
+  diaProducao: 'dia_producao',
+  skuCodigo: 'sku_codigo',
+  processoId: 'processo_id',
+  processoNome: 'processo_nome',
+  quantidade: 'quantidade',
+  operadores: 'operadores',
+  pcsHora: 'pcs_hora',
+  tempoHoras: 'tempo_horas',
+  lote: 'lote',
+  feito: 'feito',
+};
+
+/**
+ * Escreve só os campos que vieram no corpo.
+ *
+ * O SET é montado dinamicamente de propósito: com `COALESCE(valor, coluna)` era impossível
+ * gravar null, e null é um estado legítimo aqui — tempo "sem taxa", processo sem cadastro.
+ */
 async function atualizar(req, res, email) {
   const id = Number(req.query.id);
   if (!id) return res.status(400).json({ erro: 'id obrigatório' });
   const b = req.body || {};
 
-  const marcandoFeito = b.feito === true;
-  const desmarcando = b.feito === false;
+  const sets = [];
+  const valores = [id];
+  for (const [campo, coluna] of Object.entries(CAMPOS_EDITAVEIS)) {
+    if (b[campo] === undefined) continue;
+    valores.push(b[campo]);
+    sets.push(`${coluna} = $${valores.length}`);
+  }
+  if (!sets.length) return res.json({ ok: true });
 
-  await query(
-    `UPDATE demanda_processo
-        SET tipo_linha    = COALESCE($2, tipo_linha),
-            dia_processo  = COALESCE($3, dia_processo),
-            dia_producao  = COALESCE($4, dia_producao),
-            sku_codigo    = COALESCE($5, sku_codigo),
-            processo_nome = COALESCE($6, processo_nome),
-            quantidade    = COALESCE($7, quantidade),
-            operadores    = COALESCE($8, operadores),
-            pcs_hora      = COALESCE($9, pcs_hora),
-            tempo_horas   = COALESCE($10, tempo_horas),
-            lote          = COALESCE($11, lote),
-            feito         = COALESCE($12, feito),
-            feito_por     = CASE WHEN $13 THEN $15 WHEN $14 THEN NULL ELSE feito_por END,
-            feito_em      = CASE WHEN $13 THEN now() WHEN $14 THEN NULL ELSE feito_em END,
-            atualizado_por = $15,
-            atualizado_em  = now()
-      WHERE id = $1`,
-    [
-      id,
-      b.tipoLinha ?? null, b.diaProcesso ?? null, b.diaProducao ?? null, b.skuCodigo ?? null,
-      b.processoNome ?? null, b.quantidade ?? null, b.operadores ?? null, b.pcsHora ?? null,
-      b.tempoHoras ?? null, b.lote ?? null, b.feito === undefined ? null : b.feito,
-      marcandoFeito, desmarcando, email,
-    ],
-  );
+  if (b.feito === true) {
+    valores.push(email);
+    sets.push(`feito_por = $${valores.length}`, 'feito_em = now()');
+  } else if (b.feito === false) {
+    sets.push('feito_por = NULL', 'feito_em = NULL');
+  }
+
+  valores.push(email);
+  sets.push(`atualizado_por = $${valores.length}`, 'atualizado_em = now()');
+
+  await query(`UPDATE demanda_processo SET ${sets.join(', ')} WHERE id = $1`, valores);
   res.json({ ok: true });
 }
 

@@ -64,8 +64,8 @@ export function Planejamento() {
         <div>
           <h1 className="page-title">Cenário semanal</h1>
           <p className="page-subtitle">
-            Equivale à aba Planejamento Semanal. O cálculo é fiel à planilha — o catálogo das
-            divergências conhecidas está em Importação.
+            Meta e demanda por semana do mês. A fórmula é a da planilha, mas o headcount é o
+            ROUNDUP do cálculo — o catálogo das divergências está em Importação.
           </p>
         </div>
         <div className="flex items-center gap-3">

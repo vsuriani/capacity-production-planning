@@ -3,7 +3,7 @@
 const { exigirAuth } = require('../_lib/auth');
 const { query } = require('../_lib/db');
 const { carregarCenario, calcularCenario } = require('../_lib/cenario');
-const { gradeDoMes } = require('../_lib/motor/calendario');
+const { gradeDoMes, diasUteisDoMes } = require('../_lib/motor/calendario');
 
 /**
  * Índice (0-based) da semana do mês que contém `hoje`, na mesma grade que o Calendário
@@ -21,6 +21,31 @@ function indiceDaSemanaVigente(hoje) {
 }
 
 /**
+ * Headcount do mês inteiro: a carga de todos os períodos do cenário sobre os dias úteis do
+ * mês. Repete a conta de `operadores.js` com os agregados do mês — sem excedente, que é
+ * decisão de cenário e hoje não se aplica ao semanal.
+ *
+ * Null quando o cenário não é de um mês (o de capacidade) ou o mês não tem dia útil.
+ */
+function agregadoDoMes(cenario, resultados, parametros, feriados) {
+  if (!cenario.mes || !cenario.ano) return null;
+
+  const diasUteis = diasUteisDoMes(cenario.mes, cenario.ano, feriados);
+  const horas = resultados.reduce((soma, r) => soma + r.horasTotais, 0);
+  const horasPorOperador = diasUteis * (parametros.jornadaHoras - parametros.pausaHoras);
+  if (horasPorOperador <= 0) return { diasUteis, horas, fracionario: null, operadores: null };
+
+  const fracionario = horas / horasPorOperador / parametros.coefEficiencia;
+  return {
+    diasUteis,
+    horas,
+    fracionario,
+    // Mesmo epsilon do motor: a ordem da soma pode cair do outro lado de um inteiro.
+    operadores: Math.ceil(fracionario - 1e-9),
+  };
+}
+
+/**
  * Resumo para a tela inicial: uma chamada só, com o essencial de cada área.
  *
  * GET /api/resumo
@@ -29,7 +54,7 @@ async function handler(req, res) {
   const email = exigirAuth(req, res);
   if (!email) return;
 
-  const [hojeRows, cenarios, cadastro, demanda, proximos, pendencias, importacao] =
+  const [hojeRows, cenarios, cadastro, demanda, proximos, pendencias, importacao, feriados] =
     await Promise.all([
     query('SELECT CURRENT_DATE::text AS hoje'),
     // O cenário do mês corrente vem primeiro: é o que está em uso, não o último criado.
@@ -87,6 +112,7 @@ async function handler(req, res) {
         ORDER BY s.sku_codigo`,
     ),
     query('SELECT quando, quem FROM importacao ORDER BY quando DESC LIMIT 1'),
+    query('SELECT data::text FROM feriado'),
   ]);
 
   // Headcount do cenário em uso de cada tipo: o do mês corrente, senão o oficial, senão o
@@ -94,6 +120,7 @@ async function handler(req, res) {
   const hoje = hojeRows.rows[0].hoje;
   const [anoHoje, mesHoje] = hoje.split('-').map(Number);
   const indiceSemana = indiceDaSemanaVigente(hoje);
+  const semFeriado = new Set(feriados.rows.map((f) => f.data));
 
   const porTipo = [];
   const vistos = new Set();
@@ -105,6 +132,11 @@ async function handler(req, res) {
     if (!dados) continue;
     const { resultados, diagnosticos } = calcularCenario(dados);
     const validos = resultados.filter((r) => r.operadores !== null);
+
+    // O mês inteiro: a carga de todos os períodos diluída nos dias úteis do mês. É a mesma
+    // fórmula do motor — horas ÷ (diasÚteis × jornada líquida) ÷ coefEficiência, ROUNDUP —
+    // só com os agregados do mês em vez dos de uma semana.
+    const mes = agregadoDoMes(c, resultados, dados.parametros, semFeriado);
 
     // A semana vigente só existe se o cenário for mesmo do mês corrente e tiver o período
     // dessa semana — senão fica null e a tela cai no pico.
@@ -134,6 +166,7 @@ async function handler(req, res) {
         horas: semana.horasTotais,
         erro: semana.erro,
       },
+      mes,
     });
   }
 

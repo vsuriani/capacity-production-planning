@@ -28,6 +28,13 @@ type Resumo = {
       horas: number
       erro: string | null
     } | null
+    /** O mês inteiro: carga de todos os períodos sobre os dias úteis do mês. */
+    mes: {
+      diasUteis: number
+      horas: number
+      fracionario: number | null
+      operadores: number | null
+    } | null
   }[]
   totalCenarios: number
   cadastro: { sku: number; produto: number; processo: number; mapeamentos: number; feriados: number }
@@ -74,6 +81,9 @@ export function Inicio() {
     ? semanal.semanaVigente.operadores
     : semanal?.pico ?? null
 
+  // `?? null` e não `!`: numa API anterior a este campo o valor vem undefined.
+  const mes = semanal?.mes ?? null
+
   const pendentes = dados ? dados.demanda.total - dados.demanda.feitas : 0
   const cargaMax = Math.max(1, ...(dados?.proximosDias ?? []).map((d) => d.horas))
 
@@ -98,61 +108,85 @@ export function Inicio() {
             <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">Headcount necessário</h2>
               <span className="label-overline">
-                {dados.totalCenarios} cenário(s) ·{' '}
-                {semanal?.semanaVigente ? 'semana vigente' : 'pico do semanal'}
+                {semanal ? semanal.nome : `${dados.totalCenarios} cenário(s)`}
               </span>
             </header>
 
             {!semanal ? (
               <p className="px-4 py-8 text-sm text-slate-500 text-center">
-                Nenhum cenário semanal ainda — rode a importação.
+                Nenhum cenário semanal ainda — crie o cenário do mês em Cenários.
               </p>
             ) : (
-              <Link
-                to="/semanal"
-                className="block px-5 py-4 hover:bg-slate-50 transition-colors group"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <LayoutGrid size={14} className="text-slate-400" strokeWidth={1.75} />
-                  <span className="label-overline">Semanal</span>
-                  {semanal.oficial && <span className="chip-ok">oficial</span>}
-                  <ArrowUpRight
-                    size={13}
-                    className="ml-auto text-slate-300 group-hover:text-primary-700 transition-colors"
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+                <Link
+                  to="/semanal"
+                  className="block px-5 py-4 hover:bg-slate-50 transition-colors group"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <LayoutGrid size={14} className="text-slate-400" strokeWidth={1.75} />
+                    <span className="label-overline">Semanal</span>
+                    <ArrowUpRight
+                      size={13}
+                      className="ml-auto text-slate-300 group-hover:text-primary-700 transition-colors"
+                    />
+                  </div>
 
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-heading font-bold tabular-nums">
-                    {operadores === null ? '—' : fmtInt(operadores)}
-                  </span>
-                  <span className="text-sm text-slate-500">operadores</span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {semanal.semanaVigente ? (
-                    <>
-                      esta semana · {semanal.semanaVigente.periodo} ·{' '}
-                      {semanal.semanaVigente.erro
-                        ? 'sem dias úteis'
-                        : `${fmtDecimal(semanal.semanaVigente.horas)} h na semana`}
-                    </>
-                  ) : (
-                    <>
-                      no pico{semanal.picoPeriodo ? ` · ${semanal.picoPeriodo}` : ''} ·{' '}
-                      {fmtDecimal(semanal.horas)} h no total
-                    </>
-                  )}
-                </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-heading font-bold tabular-nums">
+                      {operadores === null ? '—' : fmtInt(operadores)}
+                    </span>
+                    <span className="text-sm text-slate-500">operadores</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {semanal.semanaVigente ? (
+                      <>
+                        esta semana · {semanal.semanaVigente.periodo} ·{' '}
+                        {semanal.semanaVigente.erro
+                          ? 'sem dias úteis'
+                          : `${fmtDecimal(semanal.semanaVigente.horas)} h na semana`}
+                      </>
+                    ) : (
+                      <>
+                        no pico{semanal.picoPeriodo ? ` · ${semanal.picoPeriodo}` : ''} ·{' '}
+                        {fmtDecimal(semanal.horas)} h no total
+                      </>
+                    )}
+                  </p>
 
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {semanal.correcoesLigadas > 0 && (
-                    <span className="chip">{semanal.correcoesLigadas} correção(ões)</span>
-                  )}
-                  {semanal.semDiasUteis > 0 && (
-                    <span className="chip-danger">{semanal.semDiasUteis} sem dias úteis</span>
-                  )}
-                </div>
-              </Link>
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {semanal.correcoesLigadas > 0 && (
+                      <span className="chip">{semanal.correcoesLigadas} correção(ões)</span>
+                    )}
+                    {semanal.semDiasUteis > 0 && (
+                      <span className="chip-danger">{semanal.semDiasUteis} sem dias úteis</span>
+                    )}
+                  </div>
+                </Link>
+
+                <div className="px-5 py-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CalendarRange size={14} className="text-slate-400" strokeWidth={1.75} />
+                    <span className="label-overline">Mensal</span>
+                  </div>
+
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-heading font-bold tabular-nums">
+                      {mes?.operadores == null ? '—' : fmtInt(mes.operadores)}
+                    </span>
+                    <span className="text-sm text-slate-500">operadores</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {mes
+                      ? `mês inteiro · ${fmtInt(mes.diasUteis)} dias úteis · ` +
+                        `${fmtDecimal(mes.horas)} h no mês`
+                      : 'reinicie a API para este número aparecer'}
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    <span className="chip">carga diluída nos dias úteis do mês</span>
+                  </div>
+              </div>
+              </div>
             )}
           </section>
 

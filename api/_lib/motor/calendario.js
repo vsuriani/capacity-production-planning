@@ -56,15 +56,30 @@ function diaDefasagemFiel(isoProducao, leadTime) {
   return puxarParaSexta(somarDias(isoProducao, -lt));
 }
 
+/** Dia útil = não é sábado, não é domingo e não está na tabela de feriados. */
+function ehDiaUtil(iso, feriados = new Set()) {
+  const dow = diaDaSemana(iso);
+  return dow !== 0 && dow !== 6 && !feriados.has(iso);
+}
+
+/** Dias úteis do mês inteiro (1..último dia), descontando os feriados cadastrados. */
+function diasUteisDoMes(mes, ano, feriados = new Set()) {
+  if (!mes) return 0;
+  let total = 0;
+  const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  for (let dia = 1; dia <= ultimo; dia++) {
+    const iso = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    if (ehDiaUtil(iso, feriados)) total++;
+  }
+  return total;
+}
+
 /**
  * Subtrai N dias úteis de verdade, pulando fim de semana e feriados.
  * leadTime 0 ou 1 = o próprio dia (mantém a semântica de "produz no mesmo dia").
  */
 function subtrairDiasUteis(isoProducao, leadTime, feriados = new Set()) {
-  const ehUtil = (iso) => {
-    const dow = diaDaSemana(iso);
-    return dow !== 0 && dow !== 6 && !feriados.has(iso);
-  };
+  const ehUtil = (iso) => ehDiaUtil(iso, feriados);
 
   let atual = isoProducao;
   while (!ehUtil(atual)) atual = somarDias(atual, -1);
@@ -123,6 +138,8 @@ module.exports = {
   diaDaSemana,
   puxarParaSexta,
   diaDefasagemFiel,
+  ehDiaUtil,
+  diasUteisDoMes,
   subtrairDiasUteis,
   diaDoProcesso,
   gradeDoMes,

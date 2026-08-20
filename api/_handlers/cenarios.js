@@ -4,7 +4,7 @@ const { exigirAuth } = require('../_lib/auth');
 const { query, transacao } = require('../_lib/db');
 const { validarCorrecoes } = require('../_lib/motor/desvios');
 const { carregarCenario, calcularCenario } = require('../_lib/cenario');
-const { gradeDoMes, diaDaSemana } = require('../_lib/motor/calendario');
+const { gradeDoMes, ehDiaUtil, diasUteisDoMes } = require('../_lib/motor/calendario');
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -50,7 +50,7 @@ async function listar(req, res) {
   const tipo = req.query.tipo || null;
   const { rows } = await query(
     `SELECT c.id, c.nome, c.tipo, c.mes, c.ano, c.oficial, c.correcoes, c.observacao,
-            c.criado_por, c.criado_em,
+            c.criado_por, c.criado_em, c.importado,
             (SELECT count(*) FROM cenario_periodo p WHERE p.cenario_id = c.id)::int AS periodos,
             (SELECT count(*) FROM cenario_demanda d WHERE d.cenario_id = c.id)::int AS demandas
        FROM cenario c
@@ -283,24 +283,8 @@ async function semear(c, corpo, email) {
 function periodosSemanais(mes, ano, feriados) {
   return gradeDoMes(mes, ano).map((s) => ({
     periodo: `Semana ${s.semana}`,
-    diasUteis: s.dias.filter((d) => ehUtil(d, feriados)).length,
+    diasUteis: s.dias.filter((d) => ehDiaUtil(d, feriados)).length,
   }));
-}
-
-function diasUteisDoMes(mes, ano, feriados) {
-  if (!mes) return 0;
-  let total = 0;
-  const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
-  for (let dia = 1; dia <= ultimo; dia++) {
-    const iso = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-    if (ehUtil(iso, feriados)) total++;
-  }
-  return total;
-}
-
-function ehUtil(iso, feriados) {
-  const dow = diaDaSemana(iso);
-  return dow !== 0 && dow !== 6 && !feriados.has(iso);
 }
 
 async function atualizar(id, req, res) {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Copy, Plus, Star, Trash2 } from 'lucide-react'
-import { apiDelete, apiGet, apiPatch, apiPost } from '../lib/api'
+import { Copy, Plus, Trash2 } from 'lucide-react'
+import { apiDelete, apiGet, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
 import { noMesEmUso } from '../lib/escopo'
 import { MESES, fmtData, fmtDecimal, fmtInt } from '../lib/formato'
@@ -15,7 +15,7 @@ type Comparacao = {
   }[]
 }
 
-/** Cenários: listar, duplicar, marcar oficial e comparar headcount lado a lado. */
+/** Cenários: listar, duplicar, excluir e comparar headcount lado a lado. */
 export function Cenarios() {
   const { dados, erro, carregando, recarregar } = useApi<{ cenarios: Cenario[] }>('cenarios')
   const [erroAcao, setErroAcao] = useState<string | null>(null)
@@ -213,14 +213,7 @@ export function Cenarios() {
                             className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-blue-600/25"
                           />
                         </td>
-                        <td className="td font-medium">
-                          {c.nome}
-                          {c.oficial && (
-                            <span className="chip-ok ml-2">
-                              <Star size={10} /> oficial
-                            </span>
-                          )}
-                        </td>
+                        <td className="td font-medium">{c.nome}</td>
                         <td className="td text-slate-500">
                           {c.mes && c.ano ? `${String(c.mes).padStart(2, '0')}/${c.ano}` : '—'}
                         </td>
@@ -245,15 +238,6 @@ export function Cenarios() {
                           {c.criado_por}
                         </td>
                         <td className="td text-right whitespace-nowrap">
-                          {!c.oficial && (
-                            <button
-                              className="text-slate-400 hover:text-amber-600 mr-2"
-                              title="Marcar como oficial"
-                              onClick={() => agir(() => apiPatch(`cenarios?id=${c.id}`, { oficial: true }))}
-                            >
-                              <Star size={14} />
-                            </button>
-                          )}
                           <button
                             className="text-slate-400 hover:text-primary-600 mr-2"
                             title="Duplicar"

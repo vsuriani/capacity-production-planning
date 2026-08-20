@@ -236,6 +236,65 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   diagnóstico. **Nenhum número mudou**: o motor segue fiel à planilha, `desvios.js` intacto, as
   rotas ainda devolvem `diagnosticos` e `cenario.correcoes` continua no banco. Sem switch na UI,
   ligar uma correção hoje só por `PATCH /api/cenarios?id=N`.
+- 2026-08-18 — **O Início mostra semana vigente e mês inteiro, lado a lado** (pedido do usuário).
+  O bloco mensal repete a conta de `operadores.js` com os agregados do mês: horas de todos os
+  períodos ÷ (dias úteis do mês × jornada líquida) ÷ coefEficiência, `ROUNDUP` com o mesmo
+  epsilon. Agosto/2026: **8 na semana vigente, 6 no mês** (678,04 h em 21 dias úteis) — a
+  diferença é o pico semanal contra a carga diluída. `ehDiaUtil` e `diasUteisDoMes` saíram de
+  `cenarios.js`, onde eram privados, para `motor/calendario.js`, e agora são usados pelos dois
+  handlers (o feriado cadastrado entra na conta: setembro cai de 22 para 21 dias com o 07/09).
+- 2026-08-18 — **O termo "oficial" saiu do front** (pedido do usuário): sem o chip no Início e em
+  `/cenarios`, sem o ★ no seletor e sem o botão de marcar. A coluna `cenario.oficial` continua no
+  banco e é desempate em `resumo.js` e `useCenarioSelecionado` — com um cenário por mês, nunca
+  chega a valer. Quem ainda marca é o `desvincular_planilha.mjs`.
+- 2026-08-17 — **A Lista de demanda é toda editável** (decisão do usuário): a geração é ponto de
+  partida, e quem decide data, quantidade e alocação é o **supervisor de produção**. Isso resolve
+  na operação o desvio `leadtime-caso-a-caso` — em Agosto/2026, 23 das 50 linhas nascem com o dia
+  do processo 1 a 3 dias adiantado, porque o padrão ainda é o `diaDefasagemFiel` (os 8 ramos do
+  `Código.gs`, que também ignoram a tabela de feriados). O `PATCH /api/demandas?id=N` já aceitava
+  quase tudo; faltava a UI e o `processoId`, que foi adicionado. `comuns.tsx` ganhou `CelulaData` e
+  `CelulaSelecao`, irmãs da `CelulaNumero` (commit no blur/Enter, Esc desfaz).
+  **SKU e processo são escolha fechada** (decisão do usuário): SKU vem da Base de PROD e processo
+  vem dos roteiros, em `<optgroup>` por produto · tipo de linha. O valor atual sempre entra na
+  lista marcado como `(fora do cadastro)`, para o select não trocar o dado sozinho. Escolher um
+  processo **adota o cadastro dele**: `processo_id`, nome, tipo de linha, operadores, Pç/hr e o
+  tempo recalculado. **Lote é texto livre** — não há cadastro de lote.
+  **A coluna Tempo não é editável**: é derivada de `quantidade ÷ Pç/hr` (é o que
+  `explosao.js` calcula na geração; `operadores` **não** entra nessa conta — ele é o consumo de
+  gente na alocação). A tela regrava `tempoHoras` sempre que a Qtd ou o Pç/hr mudam, e sem taxa
+  o campo fica nulo e aparece como "sem taxa".
+  O `UPDATE` da rota deixou de usar `COALESCE` e passou a montar o `SET` só com os campos que
+  vieram no corpo — era o que impedia gravar nulo de propósito (o tempo "sem taxa").
+  Cuidado conhecido: **regerar a demanda apaga as edições** — `gerar()` deleta tudo que é
+  `origem='gerado'` e só remonta o "feito", casado por `sku|processo|dia_processo`.
+- 2026-08-17 — **Revisão das 13 divergências, agora que ninguém compara com a planilha**:
+  4 ficaram impossíveis (`pares-desalinhados`, `par-outro-periodo`, `dispositivos-fora-da-soma`,
+  `arredondado-manual`) porque só existiam em dado importado; 2 nunca foram consultadas pelo motor
+  (`jornada-divergente`, `produto-nome-divergente`) — são documentação; `excedente-so-no-global`
+  é decisão de negócio, mantida fiel. Sobram 4 em que o app **ainda reproduz o bug do Apps Script
+  por padrão** e que ficaram para tratar à parte: `leadtime-caso-a-caso` (endereçado pela edição
+  manual acima), `alocacao-dia-anterior` (o dia 28/08 tem demanda e não entra no heat map),
+  `check-feito-ignorado` (latente: marcar feito não devolve a hora) e `sku-em-dois-grupos`
+  (latente: ITCH-0011, ITCS-0002 e ITCS-0019 não estão na grade de agosto).
+  Achado extra: em `sku-sem-roteiro-silencioso` a polaridade é invertida — o app já avisa, e
+  ligar a "correção" só **cala o aviso**; e `tempo-sem-guarda` é inócuo, porque
+  `projecao.js` grava `null` no lugar de `Infinity` de qualquer jeito.
+- 2026-08-17 — **O banco não tem mais cenário importado** (decisão do usuário: desvincular a
+  operação da planilha). `scripts/desvincular_planilha.mjs` faz a troca em três passos, tudo por
+  HTTP nas rotas que já existem — o datadir do pglite fica travado pelo dev server:
+  1. cria o par próprio do mês (`POST /api/cenarios`), copia metas e demanda do importado casando
+     **pelo número da semana** (`Week 3` → `Semana 3`), marca oficial, copia a grade
+     (`PATCH /api/projecao`), regera a demanda e recalcula a alocação;
+  2. `--conferir` imprime importado × próprio lado a lado;
+  3. `--apagar-importados` remove os 23 (o `ON DELETE CASCADE` leva os filhos), e recusa se o mês
+     em uso ainda não tiver cenário próprio.
+  **Efeito no número**: o importado trazia `arredondado_manual = 8` em toda semana e exibia
+  8/8/8/8; o próprio mostra o ROUNDUP do cálculo, **0/8/8/7/0** (ganhou a Semana 5, que a planilha
+  não tinha). Carga e demanda idênticas: 9600 peças, 678,04 h. Some o desvio `arredondado-manual`;
+  fica só `excedente-so-no-global`, mantido fiel (sem os 20%) por decisão de negócio.
+  Os `verificar_*.mjs` **não** dependem do banco de dev — montam um PGlite próprio a partir de
+  `.cache/payload-importacao.json`, então seguem passando. Rollback:
+  `python scripts/importar_planilha.py --dump`.
 - 2026-08-17 — **O app trabalha em um mês só** (decisão do usuário, preparando a operação sem a
   planilha): `src/lib/escopo.ts` exporta `MES_EM_USO = { mes: 8, ano: 2026 }` e `noMesEmUso()`.
   `useCenarioSelecionado` filtra por ele, então Semanal, Calendário, Lista de demanda e Operadores

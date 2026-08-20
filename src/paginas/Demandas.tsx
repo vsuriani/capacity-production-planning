@@ -2,13 +2,22 @@ import { useMemo, useState } from 'react'
 import { Download, Plus, Trash2 } from 'lucide-react'
 import { apiDelete, apiPatch, apiPost } from '../lib/api'
 import { useApi, useCenarioSelecionado } from '../lib/hooks'
-import { fmtData, fmtDecimal, fmtDiaSemana, fmtInt } from '../lib/formato'
-import { ROTULO_TIPO_LINHA, type Demanda, type TipoLinha } from '../lib/tipos'
-import { Carregando, CelulaNumero, Erro, Kpi, SeletorCenario } from '../components/comuns'
+import { fmtDecimal, fmtDiaSemana, fmtInt } from '../lib/formato'
+import { ROTULO_TIPO_LINHA, type Demanda, type Processo, type TipoLinha } from '../lib/tipos'
+import {
+  Carregando, CelulaData, CelulaNumero, CelulaSelecao, CelulaTexto, Erro, Kpi, SeletorCenario,
+} from '../components/comuns'
 
 const TIPOS: TipoLinha[] = ['defasagem', 'industrializacao', 'producao_montagem']
+const OPCOES_TIPO = TIPOS.map((t) => ({ valor: t, rotulo: ROTULO_TIPO_LINHA[t] }))
 
-/** Lista de demanda (aba Demandas Defasagem), editável no app. */
+/**
+ * Lista de demanda (aba Demandas Defasagem).
+ *
+ * A geração é um ponto de partida: quem decide data, quantidade e alocação é o supervisor
+ * de produção. Por isso quase toda coluna é editável, inclusive o dia do processo — só o
+ * tempo não é, porque é derivado (`quantidade ÷ Pç/hr`).
+ */
 export function Demandas() {
   const { cenarios, id, setId } = useCenarioSelecionado('mensal')
   const [tipo, setTipo] = useState<TipoLinha | ''>('')
@@ -27,14 +36,64 @@ export function Demandas() {
   }>(id ? `demandas?${filtros}` : null)
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
 
-  async function editar(linhaId: number, campo: string, valor: unknown) {
+  // Catálogos: SKU e processo são escolha fechada, vinda do cadastro.
+  const { dados: catalogoSku } = useApi<{ itens: { codigo: string; descricao: string }[] }>('sku')
+  const { dados: catalogoRoteiros } = useApi<{ processos: Processo[] }>('roteiros')
+
+  const opcoesSku = useMemo(
+    () =>
+      (catalogoSku?.itens ?? []).map((s) => ({
+        valor: s.codigo,
+        rotulo: s.descricao ? `${s.codigo} — ${s.descricao}` : s.codigo,
+      })),
+    [catalogoSku],
+  )
+
+  const opcoesProcesso = useMemo(
+    () =>
+      (catalogoRoteiros?.processos ?? []).map((p) => ({
+        valor: String(p.id),
+        rotulo: p.nome,
+        grupo: `${p.produto} · ${ROTULO_TIPO_LINHA[p.tipo_linha]}`,
+      })),
+    [catalogoRoteiros],
+  )
+
+  const processoPorId = useMemo(
+    () => new Map((catalogoRoteiros?.processos ?? []).map((p) => [p.id, p])),
+    [catalogoRoteiros],
+  )
+
+  /**
+   * Tempo é derivado, não digitado: `quantidade ÷ Pç/hr`, como a geração calcula. Operadores
+   * não entra nesta conta — ele é o consumo de gente na alocação.
+   */
+  const tempoDe = (quantidade: number, pcsHora: number | null) =>
+    pcsHora && pcsHora > 0 ? quantidade / pcsHora : null
+
+  async function editar(linhaId: number, mudancas: Record<string, unknown>) {
     setErroSalvar(null)
     try {
-      await apiPatch(`demandas?id=${linhaId}`, { [campo]: valor })
+      await apiPatch(`demandas?id=${linhaId}`, mudancas)
       recarregar()
     } catch (e) {
       setErroSalvar((e as Error).message)
     }
+  }
+
+  /** Trocar o processo adota o cadastro dele: identidade, operadores, Pç/hr e o tempo. */
+  function escolherProcesso(linha: Demanda, processoId: number) {
+    const p = processoPorId.get(processoId)
+    if (!p) return
+    const pcsHora = p.pcs_hora === null ? null : Number(p.pcs_hora)
+    editar(linha.id, {
+      processoId: p.id,
+      processoNome: p.nome,
+      tipoLinha: p.tipo_linha,
+      operadores: p.operadores === null ? null : Number(p.operadores),
+      pcsHora,
+      tempoHoras: pcsHora && pcsHora > 0 ? Number(linha.quantidade) / pcsHora : null,
+    })
   }
 
   async function adicionar() {
@@ -84,8 +143,8 @@ export function Demandas() {
         <div>
           <h1 className="page-title">Lista de demanda</h1>
           <p className="page-subtitle">
-            Equivale à aba Demandas Defasagem. Editável aqui; exporta em CSV para abrir no
-            Sheets.
+            A geração é o ponto de partida — as datas e o resto são editáveis. O tempo é
+            calculado (Qtd ÷ Pç/hr). Exporta em CSV para abrir no Sheets.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -184,7 +243,7 @@ export function Demandas() {
                         <input
                           type="checkbox"
                           checked={l.feito}
-                          onChange={(e) => editar(l.id, 'feito', e.target.checked)}
+                          onChange={(e) => editar(l.id, { feito: e.target.checked })}
                           className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-blue-600/25"
                           title={
                             l.feito && l.feito_por
@@ -193,49 +252,93 @@ export function Demandas() {
                           }
                         />
                       </td>
-                      <td className="td">
-                        <span className="chip">{ROTULO_TIPO_LINHA[l.tipo_linha]}</span>
+                      <td className="td p-0 min-w-44">
+                        <CelulaSelecao
+                          valor={l.tipo_linha}
+                          opcoes={OPCOES_TIPO}
+                          onConfirmar={(v) => editar(l.id, { tipoLinha: v })}
+                        />
                       </td>
-                      <td className="td whitespace-nowrap">
-                        {fmtData(l.dia_processo)}{' '}
-                        <span className="text-slate-400 text-xs">
-                          {fmtDiaSemana(l.dia_processo)}
-                        </span>
+                      <td className="td p-0 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <CelulaData
+                            valor={l.dia_processo}
+                            onConfirmar={(v) => editar(l.id, { diaProcesso: v })}
+                          />
+                          <span className="text-slate-400 text-xs pr-2">
+                            {fmtDiaSemana(l.dia_processo)}
+                          </span>
+                        </div>
                       </td>
-                      <td className="td whitespace-nowrap text-slate-500">
-                        {fmtData(l.dia_producao)}
+                      <td className="td p-0 whitespace-nowrap">
+                        <CelulaData
+                          valor={l.dia_producao}
+                          onConfirmar={(v) => editar(l.id, { diaProducao: v })}
+                        />
                       </td>
-                      <td className="td data-code">{l.sku_codigo}</td>
-                      <td className="td max-w-72 truncate" title={l.processo_nome}>
-                        {l.processo_nome}
-                        {l.origem === 'manual' && <span className="chip ml-2">manual</span>}
+                      <td className="td p-0 min-w-36">
+                        <CelulaSelecao
+                          valor={l.sku_codigo}
+                          opcoes={opcoesSku}
+                          className="data-code"
+                          onConfirmar={(v) => editar(l.id, { skuCodigo: v })}
+                        />
+                      </td>
+                      <td className="td p-0 min-w-64">
+                        <div className="flex items-center">
+                          <CelulaSelecao
+                            valor={String(l.processo_id ?? '')}
+                            opcoes={
+                              l.processo_id === null
+                                ? [{ valor: '', rotulo: l.processo_nome || '— sem processo —' },
+                                   ...opcoesProcesso]
+                                : opcoesProcesso
+                            }
+                            onConfirmar={(v) => escolherProcesso(l, Number(v))}
+                          />
+                          {l.origem === 'manual' && <span className="chip mr-2">manual</span>}
+                        </div>
                       </td>
                       <td className="td-num p-0">
                         <CelulaNumero
                           valor={Number(l.quantidade)}
                           decimais={0}
-                          onConfirmar={(v) => editar(l.id, 'quantidade', v)}
+                          onConfirmar={(v) =>
+                            editar(l.id, {
+                              quantidade: v,
+                              tempoHoras: tempoDe(v, l.pcs_hora === null ? null : Number(l.pcs_hora)),
+                            })
+                          }
                         />
                       </td>
                       <td className="td-num p-0">
                         <CelulaNumero
                           valor={l.operadores === null ? null : Number(l.operadores)}
                           decimais={0}
-                          onConfirmar={(v) => editar(l.id, 'operadores', v)}
+                          onConfirmar={(v) => editar(l.id, { operadores: v })}
                         />
                       </td>
                       <td className="td-num p-0">
                         <CelulaNumero
                           valor={l.pcs_hora === null ? null : Number(l.pcs_hora)}
-                          onConfirmar={(v) => editar(l.id, 'pcsHora', v)}
+                          onConfirmar={(v) =>
+                            editar(l.id, { pcsHora: v, tempoHoras: tempoDe(Number(l.quantidade), v) })
+                          }
                         />
                       </td>
                       <td
-                        className={`td-num ${l.tempo_horas === null ? 'bg-amber-50 text-amber-800' : ''}`}
+                        className={`td-num ${l.tempo_horas === null ? 'bg-amber-50 text-amber-800' : 'text-slate-500'}`}
+                        title="Qtd ÷ Pç/hr"
                       >
                         {l.tempo_horas === null ? 'sem taxa' : fmtDecimal(l.tempo_horas)}
                       </td>
-                      <td className="td data-code">{l.lote}</td>
+                      <td className="td p-0 min-w-32">
+                        <CelulaTexto
+                          valor={l.lote}
+                          className="data-code"
+                          onConfirmar={(v) => editar(l.id, { lote: v })}
+                        />
+                      </td>
                       <td className="td text-right">
                         <button
                           className="text-slate-400 hover:text-red-600"
@@ -251,9 +354,11 @@ export function Demandas() {
               </table>
             </div>
             <footer className="px-4 py-2 border-t border-slate-200 text-xs text-slate-500">
-              Marcar como feito registra quem e quando, e tira a carga do heat map quando a
-              correção <span className="data-code">check-feito-ignorado</span> está ligada no
-              cenário. Regerar a demanda preserva as linhas manuais e o que já estava feito.
+              As células salvam ao sair do campo (Enter confirma, Esc desfaz); o tempo se
+              recalcula quando muda a Qtd ou o Pç/hr. Marcar como feito
+              registra quem e quando. Regerar a demanda no calendário reescreve as linhas geradas
+              — as edições feitas aqui se perdem; linhas manuais e as já marcadas como feitas
+              são preservadas.
             </footer>
           </section>
         </div>
