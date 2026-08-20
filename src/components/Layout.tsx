@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  CalendarRange, ClipboardList, Database, Download, GitCompare,
+  CalendarCheck, CalendarRange, ClipboardList, Database, Download, GitCompare,
   Home, LayoutGrid, ListTree, Moon, Sun, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -22,6 +22,7 @@ const SECOES: Secao[] = [
     itens: [
       { para: '/calendario', rotulo: 'Calendário', Icone: CalendarRange },
       { para: '/demandas', rotulo: 'Lista de demanda', Icone: ClipboardList },
+      { para: '/simulacao', rotulo: 'Simulação ideal', Icone: CalendarCheck },
       { para: '/operadores', rotulo: 'Operadores', Icone: Users },
     ],
   },

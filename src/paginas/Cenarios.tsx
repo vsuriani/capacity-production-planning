@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
-import { noMesEmUso } from '../lib/escopo'
+import { MES_EM_USO, noMesEmUso } from '../lib/escopo'
 import { MESES, fmtData, fmtDecimal, fmtInt } from '../lib/formato'
 import type { Cenario, TipoCenario } from '../lib/tipos'
 import { Carregando, Erro } from '../components/comuns'
@@ -14,6 +14,14 @@ type Comparacao = {
     totalDiagnosticos: number
   }[]
 }
+
+/**
+ * Quantas linhas de demanda o cenário carrega. São tabelas diferentes por tipo: o semanal guarda
+ * quantidade por dispositivo × período (`cenario_demanda`), e o mensal guarda a Lista de demanda
+ * explodida do calendário (`demanda_processo`) — que é onde estão as 50 linhas de Agosto/2026.
+ */
+const linhasDeDemanda = (c: Cenario) =>
+  c.tipo === 'mensal' ? (c.linhas_demanda ?? 0) : (c.demandas ?? 0)
 
 /** Cenários: listar, duplicar, excluir e comparar headcount lado a lado. */
 export function Cenarios() {
@@ -43,12 +51,24 @@ export function Cenarios() {
     })
   }
 
-  // Só o semanal do mês em uso. Os outros tipos e os demais meses importados continuam no
-  // banco, fora da lista.
+  /**
+   * Todos os cenários, agrupados por tipo, com o mês em uso na frente e o resto do mais novo
+   * para o mais antigo.
+   *
+   * Esta tela **não** filtra por `MES_EM_USO` de propósito: é aqui que se cria o cenário do mês
+   * que vem, e cenário criado que não aparece parece cenário não criado. Quem escopa a operação
+   * é `useCenarioSelecionado`, nas telas de execução.
+   */
   const porTipo = useMemo(() => {
+    const ordenados = [...(dados?.cenarios ?? [])].sort(
+      (a, b) =>
+        Number(noMesEmUso(b)) - Number(noMesEmUso(a)) ||
+        (b.ano ?? 0) - (a.ano ?? 0) ||
+        (b.mes ?? 0) - (a.mes ?? 0) ||
+        b.criado_em.localeCompare(a.criado_em),
+    )
     const mapa = new Map<string, Cenario[]>()
-    for (const c of dados?.cenarios ?? []) {
-      if (c.tipo !== 'semanal' || !noMesEmUso(c)) continue
+    for (const c of ordenados) {
       if (!mapa.has(c.tipo)) mapa.set(c.tipo, [])
       mapa.get(c.tipo)!.push(c)
     }
@@ -92,7 +112,8 @@ export function Cenarios() {
           <h1 className="page-title">Cenários</h1>
           <p className="page-subtitle">
             Cada cenário guarda a própria demanda e a própria política de correções — é assim
-            que se compara "fiel à planilha" com "corrigido".
+            que se compara "fiel à planilha" com "corrigido". Esta tela lista todos os meses; as
+            telas de execução trabalham só em {MESES[MES_EM_USO.mes - 1]}/{MES_EM_USO.ano}.
           </p>
         </div>
         <div className="flex gap-2">
@@ -116,10 +137,10 @@ export function Cenarios() {
         <section className="panel px-4 py-4 mb-5">
           <h2 className="font-heading font-semibold text-sm mb-1">Novo cenário</h2>
           <p className="text-xs text-slate-500 mb-3">
-            Nasce com os tempos por dispositivo do cenário mais recente do mesmo tipo, os dias
-            úteis já contados do calendário e os termos da fórmula alinhados. Processos e
-            sequências, Base de PROD e o mapa SKU → produto são cadastros globais — o cenário
-            aponta para eles, não copia.
+            Nasce com os <strong>tempos por dispositivo do cenário semanal</strong> — seja qual
+            for o tipo —, os dias úteis já contados do calendário e os termos da fórmula
+            alinhados. Processos e sequências, Base de PROD e o mapa SKU → produto são cadastros
+            globais: o cenário aponta para eles, não copia.
           </p>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -192,17 +213,21 @@ export function Cenarios() {
                     <th className="th">Nome</th>
                     <th className="th">Período</th>
                     <th className="th text-right">Períodos</th>
-                    <th className="th text-right">Demandas</th>
-                    <th className="th">Correções ligadas</th>
+                    <th
+                      className="th text-right"
+                      title="Semanal: quantidade por dispositivo × período. Mensal: linhas da Lista de demanda."
+                    >
+                      Demandas
+                    </th>
+                    <th className="th text-right" title="Soma do tempo estimado da Lista de demanda">
+                      Carga listada
+                    </th>
                     <th className="th">Criado</th>
                     <th className="th" />
                   </tr>
                 </thead>
                 <tbody>
                   {lista.map((c) => {
-                    const correcoes = Object.entries(c.correcoes ?? {})
-                      .filter(([, v]) => v)
-                      .map(([k]) => k)
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/60">
                         <td className="td">
@@ -213,24 +238,17 @@ export function Cenarios() {
                             className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-blue-600/25"
                           />
                         </td>
-                        <td className="td font-medium">{c.nome}</td>
+                        <td className="td font-medium">
+                          {c.nome}
+                          {noMesEmUso(c) && <span className="chip-ok ml-2">mês em uso</span>}
+                        </td>
                         <td className="td text-slate-500">
                           {c.mes && c.ano ? `${String(c.mes).padStart(2, '0')}/${c.ano}` : '—'}
                         </td>
                         <td className="td-num">{fmtInt(c.periodos ?? 0)}</td>
-                        <td className="td-num">{fmtInt(c.demandas ?? 0)}</td>
-                        <td className="td">
-                          {correcoes.length === 0 ? (
-                            <span className="chip">fiel à planilha</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {correcoes.map((k) => (
-                                <span key={k} className="chip-ok data-code">
-                                  {k}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                        <td className="td-num">{fmtInt(linhasDeDemanda(c))}</td>
+                        <td className="td-num text-slate-500">
+                          {c.carga_horas == null ? '—' : `${fmtDecimal(c.carga_horas)} h`}
                         </td>
                         <td className="td text-xs text-slate-500">
                           {fmtData(c.criado_em)}

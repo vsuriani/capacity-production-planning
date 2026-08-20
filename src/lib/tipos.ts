@@ -23,7 +23,12 @@ export type Cenario = {
   criado_por: string
   criado_em: string
   periodos?: number
+  /** Linhas em `cenario_demanda`: quantidade por dispositivo × período (cenário semanal). */
   demandas?: number
+  /** Linhas em `demanda_processo`: a Lista de demanda explodida (cenário mensal). */
+  linhas_demanda?: number
+  /** Soma de `tempo_horas` da Lista de demanda. Null quando o cenário não tem lista. */
+  carga_horas?: string | null
 }
 
 export type Desvio = {
@@ -125,6 +130,8 @@ export type Demanda = {
   sku_codigo: string
   processo_id: number | null
   processo_nome: string
+  /** Dia escolhido na Simulação ideal. Null = ainda no pool, por posicionar. */
+  dia_ideal?: string | null
   quantidade: string
   operadores: string | null
   pcs_hora: string | null

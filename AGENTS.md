@@ -236,6 +236,101 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   diagnóstico. **Nenhum número mudou**: o motor segue fiel à planilha, `desvios.js` intacto, as
   rotas ainda devolvem `diagnosticos` e `cenario.correcoes` continua no banco. Sem switch na UI,
   ligar uma correção hoje só por `PATCH /api/cenarios?id=N`.
+- 2026-08-20 — **Simulação ideal** (feature nova, pedida pelo usuário): a lista de demanda vira
+  calendário operacional. Decisões dele: grava numa coluna `dia_ideal` **separada** do
+  `dia_processo` (migration `002_simulacao.sql`), o gesto é **arrastar e soltar** nativo, e o
+  quadro abre com **tudo no pool** (`dia_ideal IS NULL`). Separar as duas colunas é o que deixa
+  simular sem mexer na Lista de demanda nem no heat map — só o Aplicar copia uma na outra, e o
+  que ficou no pool mantém o dia gerado.
+  **O dimensionamento do dia** (`motor/simulacao.js`) responde uma pergunta que o heat map não
+  responde: lá N é fixo e a carga se espalha; aqui N é a incógnita. Duas leituras, e não são
+  intercambiáveis — `homemHora` (Σ duração × operadores) é o consumo de gente, `horasParede`
+  (Σ duração) é o relógio. O nº de operadores sai do **mesmo empacotador de 3 passadas** do
+  `alocacao.js`, rodado com N crescente até ninguém passar da jornada, em vez de uma conta
+  paralela que discordaria da tela de Operadores. O teto da busca é a soma dos operadores
+  pedidos no dia — com essa gente todo processo pega gente ociosa, então a busca prova que
+  termina.
+  **O que a feature revelou em Agosto/2026**: 5 dos 16 dias com carga têm problema. O 14/08 junta
+  **111,30 homem-hora contra 60 h** de capacidade (mínimo 15 operadores, a linha tem 8) e é
+  **impossível**, não só apertado: dois "Processo de montar completo" duram 8 h cada, acima da
+  jornada de 7,5 h — nenhum N conserta processo longo demais. O 07/08 é o caso oposto e mais
+  sutil: ocupação de só 68%, mas o empacotador precisa de 9 operadores, então quem morde é a
+  restrição de empacotamento, não o volume.
+  **As não alocadas são tabela**, não cards (pedido do usuário): mesmas colunas da Lista de
+  demanda, mais `Homem-hora` — cada `<tr>` é arrastável e a seção inteira é alvo de drop.
+  **CSV do que foi plotado** em `GET /api/simulacao?cenario=N&formato=csv`: uma linha por
+  demanda posicionada, em ordem de dia, com o dimensionamento do dia **repetido em cada linha**
+  para dar tabela dinâmica no Sheets sem segunda aba. Só o plotado entra — o que ficou no pool
+  não tem dia para exportar. O `celulaCsv` saiu de `demandas.js` para `_lib/csv.js` e agora é
+  compartilhado pelas duas exportações, em vez de duplicado.
+  Notas de implementação: `rowCount` de UPDATE vem indefinido no PGlite do dev — os handlers
+  usam `RETURNING` e contam as linhas. Clicar na demanda e depois no dia faz o mesmo que
+  arrastar, porque drag-and-drop nativo não funciona por teclado nem em toque.
+- 2026-08-20 — **Os tempos por dispositivo de um cenário novo vêm sempre do semanal** (pedido do
+  usuário). `semear()` elegia como base o cenário mais recente **do mesmo tipo**, então um mensal
+  novo herdava de outro mensal — e o mensal de Agosto/2026 nasceu com os 26 dispositivos zerados
+  enquanto o semanal do mesmo mês tinha 23 preenchidos. Agora `baseDosTempos()` ordena por
+  `(tipo = 'semanal') DESC, oficial DESC, criado_em DESC`: o semanal é o padrão para qualquer
+  tipo, porque é o único com tela de planejamento e o único que se mantém. **Só entra na eleição
+  quem tem ao menos um `meta_min_peca > 0`** — cenário zerado não carrega padrão nenhum e antes
+  podia ser eleito, propagando o vazio; sem candidato, cai no caminho de semear todos os
+  dispositivos com 0. `metrica_componente` **continua vindo do mesmo tipo**: ela só existe no
+  cenário de capacidade, e puxá-la do semanal deixaria um capacidade novo sem componente algum.
+  Duplicar cenário (`?duplicarDe=`) não mudou — copiar aquele cenário é o que se pediu.
+  Provado por `scripts/verificar_tempos_padrao.mjs`, num PGlite próprio: mensal novo pega os
+  tempos do semanal e não os zeros do mensal anterior, o semanal oficial ganha do semanal mais
+  recente, e sem candidato com tempo o cenário nasce zerado.
+- 2026-08-20 — **Perdi o banco de dev reiniciando o dev-server à força.** `Stop-Process -Force`
+  no processo do PGlite corrompeu o datadir, e `abrirBanco()` (`dev-server-pglite.cjs:42`) faz
+  `fs.rmSync` e recria vazio quando não consegue abrir — sem backup. Recuperado pelo caminho
+  documentado: `importar_planilha.py --dump` (cadastros + os 23 cenários importados, estado de
+  04/08) e `desvincular_planilha.mjs --mes 8 --ano 2026`. **Não voltou**, porque só existia no
+  banco: a grade de Agosto no Calendário e as 50 linhas de demanda (o dump só tem a grade de
+  **Julho/2026**), os cenários de Setembro/2026, os feriados cadastrados e as edições de
+  cadastro posteriores a 04/08. **Regra daqui em diante: não matar esse processo à força** — ele
+  não tem shutdown gracioso, e a migration nova só entra reiniciando, então o restart é pedido
+  ao usuário.
+- 2026-08-20 — **A lista de `/cenarios` passou a contar a demanda que o cenário realmente tem, e
+  `Correções ligadas` deu lugar a `Carga listada`** (pedido do usuário). A coluna Demandas contava
+  só `cenario_demanda`, então o mensal Agosto/2026 aparecia com **0** enquanto a Lista de demanda
+  mostrava 50 linhas: são tabelas diferentes por tipo — o semanal guarda quantidade por
+  dispositivo × período, o mensal guarda a lista explodida do calendário (`demanda_processo`). A
+  rota devolve as duas contagens (`demandas`, `linhas_demanda`) mais `carga_horas` = soma de
+  `tempo_horas`, **sem `coalesce`**, para cenário sem lista dar null e a tela mostrar `—` em vez de
+  "0,00 h". Confere com o KPI da Lista de demanda: 50 linhas, **137,97 h**. As correções não se
+  perderam de vista — o painel Comparar segue mostrando "N correção(ões)" por cenário.
+- 2026-08-20 — **`MES_EM_USO` virou default, não mais filtro** (o usuário não achava no Calendário
+  o cenário que tinha acabado de criar). O filtro estava num ponto só, `useCenarioSelecionado`
+  (`hooks.ts`), e valia para Semanal, Calendário, Lista de demanda e Operadores. Ele existia
+  porque o banco carregava os 14 cenários mensais importados e o seletor virava ilegível — mas
+  esses cenários foram apagados em 17/08, e o filtro passou a esconder só o cenário do mês que
+  vem. Agora o seletor lista todos os meses, com o mês em uso na frente, e **abre nele**; a
+  escolha vale de outro mês também e persiste no localStorage, porque planejar setembro é uma
+  sessão inteira, não um clique. Conferido no Calendário: escolher Setembro/2026 carrega a
+  projeção de setembro (Semana 1 = 31/08–05/09, grade vazia). Virar o mês de verdade ainda é
+  editar `src/lib/escopo.ts`.
+- 2026-08-20 — **"O botão Criar não cria" em /cenarios era a própria lista escondendo o cenário**
+  (bug relatado pelo usuário). O `POST` sempre funcionou — o filtro da listagem exigia
+  `tipo === 'semanal' && noMesEmUso(c)`, então criar Setembro/2026 gravava e sumia, e clicar de
+  novo empilhava duplicata (chegaram a nove no banco de dev). Cenário **mensal** nunca aparecia em
+  mês nenhum, o que tornava invisível o passo 2 do "Virar o mês" do README. Agora `/cenarios` lista
+  **todos os tipos e todos os meses**, com o mês em uso na frente e chip `mês em uso`; quem escopa
+  a operação continua sendo `useCenarioSelecionado` (`MES_EM_USO`) nas telas de execução. Duplicata
+  no mesmo mês segue permitida de propósito — é como se compara "fiel" com "corrigido" —, só que
+  agora ela é visível em vez de silenciosa.
+- 2026-08-20 — **Processos e sequências virou cadastro de verdade** (pedido do usuário): saiu o
+  painel de aviso do topo (produtos sem processo + grafias alternativas), toda coluna ficou
+  editável e a tela ganhou **Novo processo**. A rota já fazia POST/PATCH/DELETE — o trabalho foi
+  todo de tela. Decisões: **produto é coluna editável** (é o único jeito de mover um processo de
+  roteiro; a linha troca de grupo ao salvar); **produto filho é escolha fechada** do catálogo,
+  porque `processo.sku_filho` tem FK para `sku(codigo)` e `explosao.js` casa o SKU por ele —
+  `— nenhum —` grava null; **Total/dia continua derivado** (Pç/hr × 8) mas aceita edição pelo
+  outro lado, gravando `pcsHora = total ÷ 8`, com guarda de arredondamento para entrar e sair da
+  célula não regravar nada. `sequencia` e `leadtime_dias` são `integer`, então a tela arredonda
+  antes do PATCH (digitar "1,5" daria 500 no cast). `GET /api/roteiros` **não** mudou:
+  `produtosSemRoteiro` e `aliases` continuam na resposta porque `scripts/verificar_api.mjs` afere
+  os dois; só a UI parou de mostrar. O caso dos 3 produtos sem processo agora se resolve sozinho —
+  eles aparecem no seletor de produto do formulário.
 - 2026-08-18 — **O Início mostra semana vigente e mês inteiro, lado a lado** (pedido do usuário).
   O bloco mensal repete a conta de `operadores.js` com os agregados do mês: horas de todos os
   períodos ÷ (dias úteis do mês × jornada líquida) ÷ coefEficiência, `ROUNDUP` com o mesmo

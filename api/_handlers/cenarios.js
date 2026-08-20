@@ -52,7 +52,14 @@ async function listar(req, res) {
     `SELECT c.id, c.nome, c.tipo, c.mes, c.ano, c.oficial, c.correcoes, c.observacao,
             c.criado_por, c.criado_em, c.importado,
             (SELECT count(*) FROM cenario_periodo p WHERE p.cenario_id = c.id)::int AS periodos,
-            (SELECT count(*) FROM cenario_demanda d WHERE d.cenario_id = c.id)::int AS demandas
+            (SELECT count(*) FROM cenario_demanda d WHERE d.cenario_id = c.id)::int AS demandas,
+            -- A demanda do cenário mensal não mora em cenario_demanda: é a Lista de demanda
+            -- explodida do calendário. Sem soma com coalesce — cenário sem lista devolve null,
+            -- que a tela mostra como "—" em vez de "0,00 h".
+            (SELECT count(*) FROM demanda_processo dp
+              WHERE dp.cenario_id = c.id)::int AS linhas_demanda,
+            (SELECT sum(dp.tempo_horas) FROM demanda_processo dp
+              WHERE dp.cenario_id = c.id) AS carga_horas
        FROM cenario c
       WHERE ($1::text IS NULL OR c.tipo::text = $1)
       ORDER BY c.tipo, c.oficial DESC, c.criado_em DESC`,
@@ -188,7 +195,7 @@ async function criar(req, res, email) {
  * copiados — o cenário aponta para eles. O que entra aqui é o que é POR cenário:
  *
  *   - os dispositivos e o tempo-padrão de cada um (a coluna Meta), herdados do cenário
- *     mais recente do mesmo tipo, que é o padrão vigente
+ *     SEMANAL vigente, qualquer que seja o tipo do cenário novo
  *   - os períodos do mês, com os dias úteis já contados do calendário e dos feriados
  *   - um termo de fórmula ALINHADO por dispositivo: cenário novo nasce correto, sem
  *     herdar os pares desalinhados da planilha
@@ -205,12 +212,7 @@ async function semear(c, corpo, email) {
   );
   const id = rows[0].id;
 
-  // Cenário mais recente do mesmo tipo: a fonte dos tempos por dispositivo.
-  const { rows: base } = await c.query(
-    `SELECT id FROM cenario WHERE tipo = $1 AND id <> $2 ORDER BY oficial DESC, criado_em DESC LIMIT 1`,
-    [tipo, id],
-  );
-  const baseId = base[0]?.id ?? null;
+  const baseId = await baseDosTempos(c, id);
 
   if (baseId) {
     await c.query(
@@ -219,16 +221,25 @@ async function semear(c, corpo, email) {
       [id, baseId],
     );
     await c.query(
-      `INSERT INTO metrica_componente (cenario_id, dispositivo_id, ordem, rotulo, papel, valor)
-       SELECT $1, dispositivo_id, ordem, rotulo, papel, valor
-         FROM metrica_componente WHERE cenario_id = $2`,
-      [id, baseId],
-    );
-    await c.query(
       `INSERT INTO cenario_parametro (cenario_id, chave, valor)
        SELECT $1, chave, valor FROM cenario_parametro WHERE cenario_id = $2`,
       [id, baseId],
     );
+    // A composição da métrica é do cenário de capacidade e só existe nele — continua vindo do
+    // mais recente do mesmo tipo, senão um capacidade novo nasceria sem componente nenhum.
+    const { rows: metrica } = await c.query(
+      `SELECT id FROM cenario WHERE tipo = $1 AND id <> $2
+        ORDER BY oficial DESC, criado_em DESC LIMIT 1`,
+      [tipo, id],
+    );
+    if (metrica[0]) {
+      await c.query(
+        `INSERT INTO metrica_componente (cenario_id, dispositivo_id, ordem, rotulo, papel, valor)
+         SELECT $1, dispositivo_id, ordem, rotulo, papel, valor
+           FROM metrica_componente WHERE cenario_id = $2`,
+        [id, metrica[0].id],
+      );
+    }
   } else {
     // Primeiro cenário do tipo: entra com todos os dispositivos e meta a preencher.
     await c.query(
@@ -277,6 +288,33 @@ async function semear(c, corpo, email) {
   }
 
   return id;
+}
+
+/**
+ * De onde saem os tempos por dispositivo de um cenário novo.
+ *
+ * **O semanal é o padrão, seja qual for o tipo do cenário novo.** Ele é o único com tela de
+ * planejamento e o único que se mantém; quando cada tipo herdava do último do próprio tipo, um
+ * cenário mensal novo nascia com os tempos de um mensal parado no tempo — foi assim que o
+ * mensal de Agosto/2026 nasceu com os 26 dispositivos zerados enquanto o semanal do mesmo mês
+ * tinha 23 preenchidos.
+ *
+ * Exige ao menos um tempo maior que zero: cenário com a coluna Meta toda zerada não carrega
+ * padrão nenhum, e elegê-lo como base só propagaria o vazio. Sem nenhum candidato, quem chama
+ * cai no caminho de semear todos os dispositivos com 0.
+ */
+async function baseDosTempos(c, novoId) {
+  const { rows } = await c.query(
+    `SELECT b.id
+       FROM cenario b
+      WHERE b.id <> $1
+        AND EXISTS (SELECT 1 FROM cenario_meta m
+                     WHERE m.cenario_id = b.id AND m.meta_min_peca > 0)
+      ORDER BY (b.tipo = 'semanal') DESC, b.oficial DESC, b.criado_em DESC
+      LIMIT 1`,
+    [novoId],
+  );
+  return rows[0]?.id ?? null;
 }
 
 /** Semana 1..5 do mês, as mesmas que o calendário monta, com os dias úteis de cada uma. */

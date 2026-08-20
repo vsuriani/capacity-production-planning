@@ -2,6 +2,7 @@
 
 const { exigirAuth } = require('../_lib/auth');
 const { query } = require('../_lib/db');
+const { responderCsv } = require('../_lib/csv');
 
 /**
  * Lista de demanda (aba Demandas Defasagem), editável.
@@ -73,14 +74,7 @@ async function listar(req, res) {
   const linhas = await buscar(req);
 
   if (req.query.formato === 'csv') {
-    const cabecalho = COLUNAS_CSV.map(([, rotulo]) => rotulo).join(';');
-    const corpo = linhas.map((l) =>
-      COLUNAS_CSV.map(([campo]) => celulaCsv(l[campo])).join(';'),
-    );
-    // BOM para o Excel/Sheets abrir em UTF-8 sem perguntar.
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="demandas.csv"');
-    return res.send('﻿' + [cabecalho, ...corpo].join('\r\n'));
+    return responderCsv(res, 'demandas.csv', COLUNAS_CSV, linhas);
   }
 
   const [{ n: total }] = (
@@ -90,14 +84,6 @@ async function listar(req, res) {
   ).rows;
 
   res.json({ demandas: linhas, total });
-}
-
-function celulaCsv(valor) {
-  if (valor === null || valor === undefined) return '';
-  if (typeof valor === 'boolean') return valor ? 'VERDADEIRO' : 'FALSO';
-  // Decimal em pt-BR para o Sheets reconhecer como número.
-  const texto = typeof valor === 'number' ? String(valor).replace('.', ',') : String(valor);
-  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
 async function criar(req, res, email) {

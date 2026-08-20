@@ -66,9 +66,10 @@ O que já está desvinculado:
 
 ### Virar o mês
 
-1. `/cenarios` → **Novo cenário** → Semanal + o mês. Ele nasce com as metas do cenário mais recente,
-   as 5 semanas e os dias úteis já contados.
-2. Repita para o tipo **mensal** — é o cenário que carrega o calendário do mês.
+1. `/cenarios` → **Novo cenário** → Semanal + o mês. Ele nasce com os tempos por dispositivo do
+   semanal vigente, as 5 semanas e os dias úteis já contados.
+2. Repita para o tipo **mensal** — é o cenário que carrega o calendário do mês. Ele também herda
+   os tempos do semanal.
 3. Troque `MES_EM_USO` em [src/lib/escopo.ts](src/lib/escopo.ts).
 4. Monte a grade em `/calendario` → **Gerar demanda** → `/operadores` → **Recalcular**.
 
@@ -137,10 +138,11 @@ fora do repositório**, em `~/.secrets/`. Nunca comite chave — ver
 | `/semanal` | Planejamento Semanal | Meta + demanda pelas semanas do mês, dias úteis, operadores |
 | `/calendario` | Projeção das linhas | Grade 5 semanas × 6 dias, blocos Produção e Industrialização, **Gerar demanda** |
 | `/demandas` | Demandas Defasagem | Editável pelo supervisor: datas, tipo, SKU e processo (listas do cadastro), qtd, operadores, Pç/hr e lote. **Tempo é calculado** (Qtd ÷ Pç/hr). Checkbox "feito", filtros, CSV |
+| `/simulacao` | — | **Simulação ideal**: arrasta cada demanda do mês (tabela das não alocadas) para o dia em que ela vai acontecer, com o dimensionamento do dia ao lado. **CSV** do que foi plotado; **Aplicar** grava na lista |
 | `/operadores` | Dimensionamento de Operadores | Heat map de ocupação dia × operador |
-| `/roteiros` | Base simplificada | Processos e sequências, editável |
+| `/roteiros` | Base simplificada | Criar processos e editar todo campo, inclusive o produto. **Total/dia é derivado** (Pç/hr × 8) |
 | `/sku` | Base de PROD | Catálogo + mapa SKU → produto + pendências |
-| `/cenarios` | — | Criar, duplicar, marcar oficial, comparar headcount — lista o semanal do mês em uso |
+| `/cenarios` | — | Criar, duplicar, excluir e comparar headcount. Lista todos os tipos e meses, com **carga listada** por cenário |
 | `/importar` | — | Como importar, histórico e o catálogo de divergências |
 
 Tema claro e escuro, com toggle no pé da sidebar.
@@ -152,9 +154,10 @@ Tema claro e escuro, com toggle no pé da sidebar.
 ### Cenários
 
 Um cenário é o recorte de planejamento: **tipo** + **mês**. O app trabalha em **um mês só**, fixado
-em [src/lib/escopo.ts](src/lib/escopo.ts) (`MES_EM_USO`): o seletor de cenário e a lista de
-`/cenarios` mostram apenas esse mês. Os cenários dos outros meses continuam no banco como
-histórico, acessíveis pela API. Para virar o mês, é essa constante — e só ela.
+em [src/lib/escopo.ts](src/lib/escopo.ts) (`MES_EM_USO`): é o mês em que os seletores de cenário
+**abrem**, e ele leva o chip `mês em uso` na lista de `/cenarios`. Os outros meses continuam
+listados e selecionáveis — é assim que se prepara o mês seguinte sem virar a chave. Para virar o
+mês em uso, é essa constante — e só ela.
 
 **Semanal** é a única tela de planejamento. O tipo `mensal` não tem tela: é o cenário que carrega o
 **calendário, a lista de demanda e a alocação** do mês (`/calendario`, `/demandas`, `/operadores`).
@@ -165,10 +168,17 @@ Isso não é só organização — é o que impede o cálculo de somar meses dif
 "Week 1".."Week 5" em cada mês (40 colunas, 12 rótulos distintos); escopando por mês, os rótulos
 deixam de colidir.
 
-Um cenário novo **nasce com as bases dentro**: os tempos por dispositivo do cenário mais recente do
-mesmo tipo, os períodos do mês com os dias úteis já contados, e os termos da fórmula alinhados —
-sem herdar os desvios da planilha. Os cadastros globais (Base de PROD, processos e sequências, mapa
-SKU → produto) **não são copiados**: o cenário aponta para eles.
+Um cenário novo **nasce com as bases dentro**: os tempos por dispositivo, os períodos do mês com os
+dias úteis já contados, e os termos da fórmula alinhados — sem herdar os desvios da planilha. Os
+cadastros globais (Base de PROD, processos e sequências, mapa SKU → produto) **não são copiados**:
+o cenário aponta para eles.
+
+**Os tempos vêm sempre do cenário semanal**, seja qual for o tipo do cenário novo. O semanal é o
+único com tela de planejamento e o único que se mantém, então é ele que guarda o tempo-padrão de
+cada dispositivo (a coluna Meta, em minutos-operador por peça). Antes cada tipo herdava do último
+do próprio tipo, e um mensal novo nascia com os tempos de um mensal parado no tempo. A base é o
+semanal oficial, senão o semanal mais recente — e só entra na eleição quem tem ao menos um tempo
+maior que zero, para um cenário zerado não propagar o vazio.
 
 ### O motor
 
@@ -183,6 +193,7 @@ Módulos puros em [api/_lib/motor/](api/_lib/motor/) — recebem dados, devolvem
 | `calendario.js` | `diaDefasagemFiel` (os 8 ramos do script original) **e** `subtrairDiasUteis` |
 | `explosao.js` | demanda do calendário → processos, via SKU→produto e roteiro |
 | `alocacao.js` | horas por operador, nas 3 passadas do script original |
+| `simulacao.js` | dimensionamento de um dia: homem-hora, operadores exigidos, se cabe |
 
 **Os termos da fórmula são dados, não código.** `cenario_formula_par` guarda cada termo
 `(Meta da linha X) × (Qtd da linha Y, período Z)` como está na planilha — é isso que permite
@@ -194,9 +205,27 @@ reproduzir os pares desalinhados e os que apontam para outro período, e corrigi
 cadastrar roteiros e SKU  →  criar/escolher o cenário do mês
                           →  montar a grade no Calendário
                           →  Gerar demanda        (explosão regressiva)
-                          →  Lista de demanda     (marcar o que foi feito)
+                          →  Lista de demanda     (ajustar linha a linha)
+                          →  Simulação ideal      (posicionar por dia, dimensionar, Aplicar)
                           →  Operadores           (heat map de ocupação)
 ```
+
+A **Simulação ideal** é onde a geração deixa de mandar. O `dia_processo` que a explosão
+calcula vem das regras caso-a-caso da planilha, que ignoram feriados e adiantam 23 das 50
+linhas de agosto; ninguém confere se o dia resultante cabe na linha — e não cabe: 14/08 junta
+9 processos, **111,30 homem-hora contra os 60 h** que 8 operadores dão, e dois deles duram 8 h
+sozinhos, acima da jornada de 7,5 h.
+
+As não alocadas ficam numa **tabela**, com as colunas da Lista de demanda mais o homem-hora;
+cada linha se arrasta para um dia (ou clica-se nela e depois no dia). Cada dia mostra
+homem-hora, quantos operadores exige e se cabe. O dia escolhido fica em
+`demanda_processo.dia_ideal` — **a lista de demanda e o heat map não mudam até o Aplicar**,
+que copia `dia_ideal` para `dia_processo` e recalcula a alocação. O que ficar no pool
+permanece no dia que a geração calculou. O botão **CSV** exporta o que foi plotado, com o
+dimensionamento do dia repetido em cada linha.
+
+> Regerar a demanda no Calendário apaga as linhas `origem='gerado'` e leva a simulação junto,
+> pela mesma razão que leva as edições da Lista de demanda.
 
 ---
 
@@ -224,7 +253,7 @@ src/                   React 18 + TS + Vite + Tailwind
 ### Rotas
 
 `me` · `resumo` · `cenarios` · `planejamento` · `roteiros` · `sku` · `projecao` · `demandas` ·
-`alocacao` · `parametros` · `desvios` · `importacao`
+`simulacao` · `alocacao` · `parametros` · `desvios` · `importacao`
 
 ---
 
@@ -234,11 +263,12 @@ Sem Docker na máquina de dev, os scripts exercitam os handlers **de verdade** c
 WASM — não mockados.
 
 ```bash
-npm test                              # 71 testes do motor
+npm test                              # 81 testes do motor
 node scripts/verificar_base.mjs       # migrations, roteamento, auth
 node scripts/verificar_importacao.mjs # importação do payload real + idempotência
 node scripts/verificar_api.mjs        # todas as rotas ponta a ponta
 node scripts/verificar_agosto.mjs     # Agosto/2026 contra os números da planilha
+node scripts/verificar_tempos_padrao.mjs # cenário novo herda os tempos do semanal
 npx tsc --noEmit && npm run build     # frontend
 ```
 
@@ -270,6 +300,7 @@ node scripts/captura.mjs semanal dark .cache/telas/semanal.png
 | `scripts/check_pairs.py` | confere o alinhamento Meta × Qtd das fórmulas |
 | `scripts/check_gs_mapping.py` | confere os mapeamentos do Apps Script contra os dados |
 | `scripts/captura.mjs` | screenshot via DevTools Protocol |
+| `scripts/verificar_tempos_padrao.mjs` | prova que cenário novo herda os tempos do semanal |
 
 ---
 
@@ -286,8 +317,11 @@ Segredos via `APP_SECRETS` (GitHub Secret → variáveis de ambiente do containe
 ## Gotchas do dev
 
 - **Não mate o dev server com `Stop-Process -Force`** — o datadir do pglite não sobrevive. Use
-  Ctrl+C. Se corromper, o próprio servidor recria e avisa para reimportar.
-- **Rotas novas só aparecem depois de reiniciar** o dev server (o roteamento é lido no boot).
+  Ctrl+C. Se corromper, `abrirBanco()` **apaga o datadir e recria vazio**, sem backup: some tudo
+  que foi montado no app (grade do calendário, lista de demanda, cenários próprios, feriados).
+  `importar_planilha.py --dump` só traz de volta o que veio da planilha. Aconteceu em 20/08.
+- **Rotas novas e migrations só entram depois de reiniciar** o dev server — o roteamento é lido
+  no boot, e as migrations rodam na subida. Reiniciar é Ctrl+C e `npm run dev`, nunca kill.
 - `process.exit()` durante o teardown do pglite dispara um assert do libuv no Windows — use
   `process.exitCode`.
 - O Vite sobe instantâneo e a API demora; abrir antes faz as telas mostrarem erro de rede.

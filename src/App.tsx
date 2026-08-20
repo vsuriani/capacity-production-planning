@@ -4,6 +4,7 @@ import { Inicio } from './paginas/Inicio'
 import { Planejamento } from './paginas/Planejamento'
 import { Calendario } from './paginas/Calendario'
 import { Demandas } from './paginas/Demandas'
+import { Simulacao } from './paginas/Simulacao'
 import { Operadores } from './paginas/Operadores'
 import { Roteiros } from './paginas/Roteiros'
 import { Sku } from './paginas/Sku'
@@ -22,6 +23,7 @@ export function App() {
 
         <Route path="/calendario" element={<Calendario />} />
         <Route path="/demandas" element={<Demandas />} />
+        <Route path="/simulacao" element={<Simulacao />} />
         <Route path="/operadores" element={<Operadores />} />
 
         <Route path="/roteiros" element={<Roteiros />} />
