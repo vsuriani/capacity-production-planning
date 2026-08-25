@@ -165,7 +165,9 @@ function calcularOperadores({
 
   // ROUNDUP com folga de epsilon: nossa ordem de soma pode diferir da do Sheets e cair
   // do outro lado de um inteiro por erro de ponto flutuante.
-  const arredondadoCalculado = Math.ceil(fracionario - 1e-9);
+  // O `|| 0` mata o -0: com demanda zero, Math.ceil(-1e-9) devolve -0, e o Intl do pt-BR
+  // formata isso como "-0" na grade.
+  const arredondadoCalculado = Math.ceil(fracionario - 1e-9) || 0;
 
   // Fiel: nas colunas mensais o headcount é digitado à mão e não acompanha o cálculo.
   const usarManual = arredondadoManual !== null && !estaCorrigido('arredondado-manual');

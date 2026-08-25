@@ -106,6 +106,62 @@ export type DetalheCenario = {
   diagnosticos: Diagnostico[]
 }
 
+// ---------------------------------------------------------------- Dimensionamento Global
+
+export type MesGlobal = {
+  periodo: string
+  ano: number
+  mes: number
+  ordem: number
+  /** Null enquanto ninguém digitou — a tela não preenche do calendário sozinha. */
+  diasUteis: number | null
+}
+
+/**
+ * Uma célula da grade. `forecast` é o que veio de fora; `ajuste` é o que o PCP digitou por cima
+ * (null = não mexeu); `efetiva` é a que entra na conta.
+ */
+export type QuantidadeGlobal = {
+  dispositivoId: number
+  periodo: string
+  ano: number
+  mes: number
+  forecast: number
+  ajuste: number | null
+  efetiva: number
+}
+
+/**
+ * A abertura da linha do dispositivo: um PROD do forecast, mês a mês, somado sobre os Country.
+ * Sempre o forecast puro — o ajuste é do dispositivo inteiro e não se distribui entre models.
+ */
+export type ModelGlobal = {
+  dispositivoId: number
+  model: string
+  produto: string | null
+  porMes: { periodo: string; quantidade: number }[]
+}
+
+export type MetricaGlobal = {
+  dispositivoId: number
+  dispositivo: string
+  componentes: { id: number; rotulo: string; papel: Papel; valor: number }[]
+  parcial: number
+  real: number | null
+}
+
+/** A resposta de `GET /api/dimensionamento`. Sem cenário: a tela é uma simulação só. */
+export type Grade = {
+  parametros: DetalheCenario['parametros']
+  meses: MesGlobal[]
+  modelsSemDispositivo: { model: string; produto: string; quantidade: number }[]
+  dispositivos: { id: number; nome: string }[]
+  metricas: MetricaGlobal[]
+  quantidades: QuantidadeGlobal[]
+  models: ModelGlobal[]
+  resultados: Resultado[]
+}
+
 export type Processo = {
   id: number
   produto_id: number

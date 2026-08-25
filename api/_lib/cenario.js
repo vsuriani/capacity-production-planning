@@ -81,8 +81,11 @@ async function carregarCenario(cenarioId) {
 
 /**
  * Roda o motor para todos os períodos do cenário.
- * No cenário de capacidade a "meta" de cada dispositivo é a métrica real calculada dos
- * componentes; nos demais vem da coluna Meta.
+ *
+ * No cenário de capacidade a "meta" de cada dispositivo é a métrica **parcial** calculada dos
+ * componentes; nos demais vem da coluna Meta. Parcial, e não real: `real` já é
+ * `parcial / coefEficiencia`, e `calcularOperadores` divide por `coefEficiencia` de novo — usar
+ * a real aplicava 0,85 duas vezes e inflava o headcount em ~18%.
  */
 function calcularCenario(dados) {
   const { cenario, parametros, periodos, dispositivos } = dados;
@@ -105,7 +108,7 @@ function calcularCenario(dados) {
     }
     for (const [dispositivoId, lista] of porDispositivo) {
       const m = metricaDoDispositivo(lista, parametros.coefEficiencia);
-      metas.set(dispositivoId, m.real ?? 0);
+      metas.set(dispositivoId, m.parcial);
       metricas.push({
         dispositivoId,
         dispositivo: nomes.get(dispositivoId),
@@ -142,7 +145,10 @@ function calcularCenario(dados) {
       diasUteis: Number(p.dias_uteis),
       parametros,
       correcoes: cenario.correcoes || {},
-      aplicarExcedente: ehCapacidade,
+      // A linha "Quantidade Produção Real" do Global é ROUNDUP puro — a folga de 20% do
+      // Coef. de Excedente não entra em aba nenhuma hoje. Quem quiser vê-la liga a correção
+      // `excedente-so-no-global` no cenário.
+      aplicarExcedente: false,
       arredondadoManual: p.arredondado_manual ?? null,
     });
     return { periodo: p.periodo, ordem: p.ordem, diasUteis: Number(p.dias_uteis), ...r };

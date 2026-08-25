@@ -1,0 +1,52 @@
+Dispositivo	Papel	Rotulo	Parcial	Real
+Smart Trac Ultra Ex	total		11.76	13.84
+Smart Trac Ultra Ex	aditivo	Defasagem STU EX	1.12	1.32
+Smart Trac Ultra Ex	aditivo	Montagem STU EX	4.39	5.16
+Smart Trac Ultra Ex	aditivo	Bateria STU EX Gen1	6.00	7.06
+Smart Trac Ultra Ex	retrabalho	Retrabalho EX Gen1	5.00	5.88
+Smart Trac Ultra Ex	ftr	FTR STU EX Gen1	0.95
+Smart Receiver Ultra	total		34.38	40.45
+Smart Receiver Ultra	aditivo	Defasagem SRU Gen1	12.84	15.11
+Smart Receiver Ultra	aditivo	Montagem SRU Gen1	20.04	23.58
+Smart Receiver Ultra	retrabalho	Retrabalho SRU Gen1	15.00	17.65
+Smart Receiver Ultra	ftr	FTR SRU Gen1	0.90
+Smart Receiver Ultra Gen 2	total		10.50	12.35
+Smart Receiver Ultra Gen 2	aditivo	Defasagem SRU Gen2	0.00	0.00
+Smart Receiver Ultra Gen 2	aditivo	Montagem SRU Gen2	10.00	11.76
+Smart Receiver Ultra Gen 2	retrabalho	Retrabalho SRU Gen2	10.00	11.76
+Smart Receiver Ultra Gen 2	ftr	FTR SRU Gen2	0.95
+Smart Trac Ultra Gen 2	total		5.50	6.47
+Smart Trac Ultra Gen 2	aditivo	Montagem STU Gen2	5.25	6.18
+Smart Trac Ultra Gen 2	retrabalho	Retrabalho STU Gen2	5.00	5.88
+Smart Trac Ultra Gen 2	ftr	FTR STU Gen2	0.95
+Smart Trac Ultra Gen 2 EX	total		12.50	14.71
+Smart Trac Ultra Gen 2 EX	aditivo	Montagem STU EX Gen2	5.25	6.18
+Smart Trac Ultra Gen 2 EX	aditivo	Bateria STU EX Gen2	7.00	8.24
+Smart Trac Ultra Gen 2 EX	retrabalho	Retrabalho EX Gen2	5.00	5.88
+Smart Trac Ultra Gen 2 EX	ftr	FTR STU EX Gen2	0.95
+Energy Trac	total		18.75	22.06
+Energy Trac	aditivo	Defasagem Energy Trac	8.78	10.33
+Energy Trac	aditivo	Montagem Energy Trac	8.37	9.85
+Energy Trac	retrabalho	Retrabalho Energy Trac	8.00	9.41
+Energy Trac	ftr	FTR Energy Trac	0.80
+Energy Trac Pro	total		6.30	7.41
+Energy Trac Pro	aditivo	Montagem Energy Trac Pro	6.00	7.06
+Energy Trac Pro	retrabalho	Retrabalho Energy Trac Pro	6.00	7.06
+Energy Trac Pro	ftr	FTR Energy Trac Pro	0.95
+Uni Trac	total		4.50	5.29
+Uni Trac	aditivo	Montagem Uni Trac	4.10	4.82
+Uni Trac	retrabalho	Retrabalho Uni Trac	4.00	4.71
+Uni Trac	ftr	FTR Uni Trac	0.90
+OEE Trac	total		19.60	23.06
+OEE Trac	aditivo	Montagem OEE Trac	4.10	4.82
+OEE Trac	aditivo	Garra OEE Trac	15.10	17.76
+OEE Trac	retrabalho	Retrabalho OEE Trac	4.00	4.71
+OEE Trac	ftr	FTR OEE Trac	0.90
+Omni Trac	total		5.40	6.35
+Omni Trac	aditivo	Montagem Omni Trac	5.10	6.00
+Omni Trac	retrabalho	Retrabalho Omni Trac	6.00	7.06
+Omni Trac	ftr	FTR Omni Trac	0.95
+Omni Receiver	total		5.40	6.35
+Omni Receiver	aditivo	Montagem Omni Receiver	5.10	6.00
+Omni Receiver	retrabalho	Retrabalho Omni Receiver	6.00	7.06
+Omni Receiver	ftr	FTR Omni Receiver	0.95

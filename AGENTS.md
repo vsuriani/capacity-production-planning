@@ -62,6 +62,8 @@ src/                 React 18 + TS + Vite + Tailwind
 | `me` | e-mail do usuário logado |
 | `cenarios` | listar, detalhar (com cálculo), duplicar, comparar, marcar oficial |
 | `planejamento` | editar meta/demanda/dias úteis/componentes; alinhar termos e incluir faltantes (sem UI desde 17/08) |
+| `forecast` | o forecast externo por Country/Model e o mapa Model→dispositivo |
+| `dimensionamento` | a grade do Dimensionamento Global (sem cenário): ler, editar, carregar tempos |
 | `roteiros` | processos e sequências (Base simplificada) |
 | `sku` | catálogo Base de PROD + mapa SKU→produto + pendências |
 | `projecao` | grade do calendário e geração da demanda |
@@ -117,11 +119,12 @@ Esta máquina não tem Docker nem Postgres. Os scripts de verificação usam **P
 (`@electric-sql/pglite`, devDependency) para rodar as migrations e os handlers de verdade.
 
 ```bash
-npm test                                        # 71 testes do motor
+npm test                                        # 95 testes do motor
 node scripts/verificar_base.mjs                 # migrations + roteamento + auth
 python scripts/importar_planilha.py --dump --dry-run
 node scripts/verificar_importacao.mjs           # importação do payload real + idempotência
 node scripts/verificar_api.mjs                  # todas as rotas /api ponta a ponta
+node scripts/verificar_dimensionamento.mjs      # o Global, num banco sem planilha importada
 npx tsc --noEmit && npm run build               # frontend
 ```
 
@@ -189,6 +192,68 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-08-25 — **A tela Dimensionamento Global voltou, alimentada por um forecast e SEM cenário**
+  (pedida pelo usuário). Ela responde a pergunta do horizonte longo — headcount mês a mês até
+  o fim do forecast (hoje 09/2026 a 12/2027) — e é a **única tela que não é escopada por
+  `MES_EM_USO`**.
+  **Nada de motor foi escrito**: `calcularOperadores` já é a fórmula. O que entrou foi a origem
+  do dado e a UI.
+  Decisões do usuário: o forecast mora em **tabela própria por Country/Model** (migration
+  `003_forecast.sql`), a quantidade da célula é **editável** com o forecast como ponto de
+  partida, o **Coef. de Excedente de 20% não é aplicado**, e os **dias úteis são digitados** —
+  a tela não preenche do calendário.
+  **É uma simulação, não um cenário** (correção de rota do usuário depois de ver a primeira
+  versão). A primeira tentativa pendurou tudo num cenário de `capacidade`, reusando a máquina de
+  `cenario_*` — e a tela abriu **vazia**: o cenário de capacidade importado tinha sido apagado
+  em 17/08, então o "Criar cenário" nasceu com **zero** `metrica_componente` (não havia de onde
+  `semear()` herdar) e com período `Período 1`, que nem é mês. O erro de fundo era conceitual:
+  cenário é um recorte de um mês de operação, com correções, oficial, duplicação e comparação;
+  esta tela é uma visão só do horizonte inteiro. Agora o estado é global (migration
+  `004_dimensionamento_global.sql`): `dispositivo_metrica` (os tempos), `global_mes` (dias
+  úteis) e `global_ajuste` (o ajuste). Sem seletor, sem cenário, e sem como abrir vazia por
+  falta de um.
+  **A camada de ajuste é o cerne do desenho**: `forecast` é o dado externo, `global_ajuste` o
+  sobrepõe célula a célula, e a ausência de linha lá significa "vale o forecast". É isso que faz
+  recarregar o forecast **não** apagar o que o PCP digitou — provado em
+  `verificar_dimensionamento.mjs`, que roda num banco sem planilha importada justamente para
+  provar que a tela não depende de mais nada. `PATCH /api/dimensionamento` com
+  `quantidade: null` apaga o ajuste; na tela, digitar de volta o número do forecast faz isso.
+  `POST /api/dimensionamento?acao=tempos` **cria o dispositivo que não existe**, pelo mesmo
+  motivo.
+  **Duas correções que a feature revelou**, que ficam de pé independentemente dela:
+  1. `cenario.js` usava a métrica **real** (que já é `parcial / 0,85`) como meta do cenário de
+     capacidade, e `calcularOperadores` dividia por `coefEficiencia` de novo — 0,85 duas vezes.
+     Somado ao `aplicarExcedente: true`, Abril/2026 dava **10,69 → 11** onde a planilha dá
+     **7,57 → 8**. Agora a meta é a **parcial**, e o excedente saiu (a linha "Quantidade
+     Produção Real" da planilha é ROUNDUP puro; quem quiser os 20% liga
+     `excedente-so-no-global` no cenário). Os **13 meses** da aba agora são teste de fidelidade
+     em `operadores.test.js`.
+  2. `Math.ceil(0 - 1e-9)` devolvia `-0`, e o `Intl` do pt-BR renderiza isso como **"-0"** na
+     grade. Era latente também no Semanal. Corrigido com `|| 0`.
+  **O mapa é por `Model`, nunca pela sigla**: `STUE` cobre *Smart Trac Ultra Ex* e *Smart Trac
+  Ultra Gen 2 EX* (11,76 contra 12,50 na parcial), `SRU` cobre dois, `ET+` cobre dois.
+  `dispositivo_model.model` **não** tem FK para `sku(codigo)`: 5 dos 23 models do forecast não
+  estão na Base de PROD (PROD-0151, PROD-0173, PROD-0183, PROD-0176, PROD-0177). Model sem
+  dispositivo vira aviso na tela, não erro — sem tempo, aquele volume não entra em conta
+  nenhuma.
+  **A linha abre nos PRODs** (pedido do usuário, espelhando os grupos da planilha): clicar no
+  dispositivo mostra os `Model` que o compõem, mês a mês, somados sobre os Country. É
+  **somente leitura** — quem se ajusta é o dispositivo, porque é ele que tem tempo-padrão. Num
+  mês ajustado os PRODs de propósito **não** somam a linha de cima: embaixo é o forecast, em
+  cima é a decisão.
+  **Dias úteis**: a célula é digitada, mas o botão *Preencher N dias úteis*
+  (`POST /api/dimensionamento?acao=dias-uteis`) conta do calendário descontando a tabela
+  `feriado` e **só toca nos meses vazios** — ação explícita, não preenchimento automático. Os
+  feriados nacionais de 2026 e 2027 entraram por `scripts/cadastrar_feriados.mjs`, **só os por
+  lei**: Carnaval e Corpus Christi são ponto facultativo e ficaram de fora (decisão do usuário;
+  `_feriados_br.mjs` já tem o `pascoa()` se passarem a valer). A contagem bate com a planilha em
+  Set/Out/Nov de 2026 (21/21/19); **Dezembro/2026 dá 22 contra os 14 da planilha** — são férias
+  coletivas, que nenhum calendário adivinha, e é caso de sobrescrever à mão.
+  Efeito colateral bom: o painel *Valores de referência* devolveu a **edição da composição da
+  métrica**, que estava sem UI desde 14/08 — agora sobre `dispositivo_metrica`, global.
+  A carga dos três TSV de `docs/` é `node scripts/importar_dimensionamento.mjs`.
+  Ficou de fora: colar o forecast na própria tela (as rotas já servem uma caixa de colar) e
+  editar jornada/coeficientes por aqui (é `parametro`, global, sem UI).
 - 2026-08 — Projeto criado a partir da engenharia reversa da planilha. **Fidelidade por padrão
   com diagnóstico visível** em vez de correção silenciosa (decisão do usuário).
 - 2026-08 — Postgres em vez de Mongo: o domínio é fortemente relacional

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Inicio } from './paginas/Inicio'
 import { Planejamento } from './paginas/Planejamento'
+import { DimensionamentoGlobal } from './paginas/DimensionamentoGlobal'
 import { Calendario } from './paginas/Calendario'
 import { Demandas } from './paginas/Demandas'
 import { Simulacao } from './paginas/Simulacao'
@@ -20,6 +21,7 @@ export function App() {
         <Route path="/inicio" element={<Inicio />} />
 
         <Route path="/semanal" element={<Planejamento />} />
+        <Route path="/dimensionamento-global" element={<DimensionamentoGlobal />} />
 
         <Route path="/calendario" element={<Calendario />} />
         <Route path="/demandas" element={<Demandas />} />

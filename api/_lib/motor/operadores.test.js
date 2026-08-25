@@ -286,3 +286,86 @@ test('desvio desconhecido em correcoes é erro, não silêncio', () => {
     /desvio desconhecido/,
   );
 });
+
+// ---------------------------------------------------------------- Dimensionamento Global
+
+/**
+ * Fidelidade da aba 🚧 Dimensionamento Global (linhas 96 e 97).
+ *
+ *   Calculado = ( Σ(MétricaReal_i × Qtd_i) / 60 ) / (DiasÚteis × (8 − 0,5))
+ *   Produção  = ROUNDUP(Calculado)
+ *
+ * A MétricaReal da planilha é `parcial / 0,85`, então alimentar o motor com a **parcial** e
+ * deixar ele dividir por `coefEficiencia` uma vez dá o mesmo número — e com mais precisão que
+ * usar o valor de 2 casas que a planilha exibe. **Sem excedente**: a linha 97 é ROUNDUP puro
+ * (Abril 7,57→8 e Junho 8,53→9; com os 20% seriam 10 e 11).
+ *
+ * Números conferidos contra o print da planilha em docs/dimensionamento-global.md. Não estão
+ * em fixtures.json porque aquele arquivo é gerado por scripts/motor_fixtures.py a partir do
+ * dump, e este bloco veio de uma revisão posterior da aba.
+ */
+const GLOBAL_DISPOSITIVOS = [
+  ['Smart Trac Ultra Ex', 11.76],
+  ['Smart Receiver Ultra', 34.38],
+  ['Smart Receiver Ultra Gen 2', 10.5],
+  ['Smart Trac Ultra Gen 2', 5.5],
+  ['Smart Trac Ultra Gen 2 EX', 12.5],
+  ['Energy Trac', 18.75],
+  ['Energy Trac Pro', 6.3],
+  ['Uni Trac', 4.5],
+  ['OEE Trac', 19.6],
+  ['Omni Trac', 5.4],
+  ['Omni Receiver', 5.4],
+];
+
+// [período, dias úteis, quantidades na ordem acima, calculado exibido, headcount exibido]
+const GLOBAL_MESES = [
+  ['Abril/2026', 20, [1500, 600, 0, 3000, 0, 0, 0, 150, 100, 50, 50], 7.57, 8],
+  ['Maio/2026', 20, [1000, 500, 0, 3000, 800, 120, 0, 200, 100, 50, 50], 7.99, 8],
+  ['Junho/2026', 21, [1624, 400, 0, 1000, 1600, 200, 0, 0, 300, 50, 50], 8.53, 9],
+  ['Julho/2026', 23, [1200, 700, 0, 0, 2480, 100, 0, 110, 0, 0, 0], 8.13, 9],
+  ['Agosto/2026', 21, [100, 700, 0, 500, 2500, 0, 300, 150, 150, 0, 0], 8.06, 9],
+  ['Setembro/2026', 21, [0, 400, 300, 0, 4000, 0, 0, 0, 0, 40, 40], 8.38, 9],
+  ['Outubro/2026', 21, [0, 0, 700, 0, 0, 0, 300, 300, 300, 100, 100], 2.18, 3],
+  ['Novembro/2026', 19, [0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0], 1.01, 2],
+  ['Dezembro/2026', 14, [0, 0, 700, 0, 0, 0, 0, 0, 0, 50, 50], 1.47, 2],
+  ['Janeiro/2027', 20, [0, 0, 0, 0, 0, 0, 500, 300, 300, 50, 50], 1.43, 2],
+  ['Fevereiro/2027', 20, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0, 0],
+  ['Março/2027', 22, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0, 0],
+  ['Abril/2027', 21, [0, 0, 0, 0, 0, 0, 600, 300, 300, 50, 50], 1.44, 2],
+];
+
+function entradaDoGlobal(periodo, diasUteis, quantidades) {
+  return {
+    periodo,
+    termos: GLOBAL_DISPOSITIVOS.map((_, i) => ({ metaDispositivoId: i, qtdDispositivoId: i })),
+    metas: new Map(GLOBAL_DISPOSITIVOS.map(([, parcial], i) => [i, parcial])),
+    demandas: new Map(quantidades.map((q, i) => [`${i}|${periodo}`, q])),
+    nomes: new Map(GLOBAL_DISPOSITIVOS.map(([nome], i) => [i, nome])),
+    diasUteis,
+    parametros: PARAMETROS,
+    aplicarExcedente: false,
+  };
+}
+
+for (const [periodo, diasUteis, quantidades, calculado, headcount] of GLOBAL_MESES) {
+  test(`Global: ${periodo} reproduz ${calculado.toFixed(2)} -> ${headcount} operadores`, () => {
+    const r = calcularOperadores(entradaDoGlobal(periodo, diasUteis, quantidades));
+
+    assert.ok(
+      Math.abs(Number(r.operadoresFracionario.toFixed(2)) - calculado) < 1e-9,
+      `calculado ${r.operadoresFracionario} != ${calculado}`,
+    );
+    assert.equal(r.operadores, headcount);
+  });
+}
+
+test('Global: mês sem demanda devolve 0 operadores, não -0', () => {
+  const vazio = GLOBAL_DISPOSITIVOS.map(() => 0);
+  const r = calcularOperadores(entradaDoGlobal('Fevereiro/2027', 20, vazio));
+
+  assert.equal(r.operadores, 0);
+  // Object.is separa 0 de -0 — é o -0 que o Intl do pt-BR renderiza como "-0" na grade.
+  assert.ok(Object.is(r.operadores, 0), `veio ${r.operadores}`);
+  assert.ok(Object.is(r.operadoresCalculado, 0), `veio ${r.operadoresCalculado}`);
+});

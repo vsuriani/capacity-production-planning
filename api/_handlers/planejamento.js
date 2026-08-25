@@ -9,6 +9,7 @@ const { query, transacao } = require('../_lib/db');
  * PATCH /api/planejamento  { cenarioId, metas?, demandas?, periodos?, componentes? }
  * POST  /api/planejamento?acao=alinhar-termos  { cenarioId, periodo? }
  * POST  /api/planejamento?acao=incluir-faltantes { cenarioId, periodo? }
+ * POST  /api/planejamento?acao=dispositivo  { cenarioId, nome }
  * DELETE /api/planejamento?termo=N
  */
 async function handler(req, res) {
