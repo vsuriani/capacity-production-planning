@@ -61,10 +61,10 @@ src/                 React 18 + TS + Vite + Tailwind
 |---|---|
 | `me` | e-mail do usuário logado |
 | `cenarios` | listar, detalhar (com cálculo), duplicar, comparar, marcar oficial |
-| `planejamento` | editar meta/demanda/dias úteis/componentes; alinhar termos e incluir faltantes (sem UI desde 17/08) |
+| `planejamento` | editar meta/demanda/dias úteis/componentes (o `PATCH` já cria o termo faltante do dispositivo editado); alinhar termos e incluir faltantes em lote (sem UI desde 17/08) |
 | `forecast` | o forecast externo por Country/Model e o mapa Model→dispositivo |
 | `dimensionamento` | a grade do Dimensionamento Global (sem cenário): ler, editar, carregar tempos |
-| `roteiros` | processos e sequências (Base simplificada) |
+| `roteiros` | processos e sequências (Base simplificada); `?acao=produto` cadastra produto |
 | `sku` | catálogo Base de PROD + mapa SKU→produto + pendências |
 | `projecao` | grade do calendário e geração da demanda |
 | `demandas` | lista de demanda editável + exportação CSV |
@@ -465,6 +465,57 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   ordenava por `criado_em` e mostrava o pico do mês, o que fazia o dashboard exibir um cenário
   vazio de outro mês. `indiceDaSemanaVigente()` usa o `gradeDoMes()` do motor e casa pelo `ordem`
   do período; `proximosDias` ganhou o corte em `CURRENT_DATE` para não encalhar no vencido.
+- 2026-08-27 — **`dispositivo.ativo` é o mecanismo de remoção, e a grade lista todos os ativos.**
+  Duas decisões que andam juntas, ambas do usuário:
+  1. **Remover dispositivo = `ativo = false`, nunca `DELETE`** (migration
+     `005_dispositivos_ocultos.sql`, que desliga **Ima na Base** e **Tampografia** — esta
+     substituída no Semanal por "Tampografia Case" e "Tampografia Sensor"). As FKs são todas
+     `ON DELETE CASCADE`: apagar levaria junto meta e demanda dos 23 cenários importados.
+     O oculto sai **da tela e da conta**: `carregarCenario` filtra metas, demandas, componentes e
+     os **dois lados** de cada par de `cenario_formula_par`, e o Global filtra `dispositivo_metrica`
+     — o motor segue sem saber que `ativo` existe. `gravarDispositivos` tem a mesma lista em
+     `DISPOSITIVOS_OCULTOS`, para o banco zerado não ressuscitar os dois na importação.
+     **Efeito no número**: o semanal de Dezembro perde os 4000 min de "Ima na Base" na Week 45 e
+     cai de 9,659 para 7,568 operadores fracionários — a verificação passou a esperar o valor
+     novo, com a conta da diferença no comentário. Reverter é o `UPDATE` inverso.
+  2. **A grade do Semanal lista todo dispositivo ativo**, não só o que já tem linha no cenário —
+     antes o mensal mostrava 19 e o semanal 22, agora ambos mostram os 24. Dispositivo sem meta
+     nem demanda aparece zerado e é editável. Para a linha nova de fato contar, `semear` passou a
+     criar `cenario_meta` a partir de `dispositivo` (com a meta da base, ou 0) em vez de copiar a
+     base, e o `PATCH /api/planejamento` cria o termo alinhado faltante do dispositivo editado.
+     Esse termo nasce **só no que o usuário editar**: o cenário fiel não é reescrito, e o
+     diagnóstico `dispositivos-fora-da-soma` continua valendo para os pares que a planilha
+     deixou de fora.
+- 2026-08-27 — **O catálogo de dispositivos virou cadastro, com tempo-padrão** (migration
+  `006_catalogo_dispositivos.sql`). Os **23 dispositivos ativos**, a ordem da tela e a coluna
+  `dispositivo.meta_padrao` (minutos-operador por peça) são semeados pela migration, e é de lá
+  que `semear` copia a coluna Meta — **todo cenário nasce com o mesmo padrão**, e a cópia dentro
+  do cenário segue editável sem contaminar os outros. Antes a Meta era herdada do último cenário
+  semanal com meta preenchida, o que fazia o padrão andar sozinho a cada edição; `baseDosTempos`
+  virou `baseDosCoeficientes` e hoje só carrega `cenario_parametro`.
+  Junto: **"OEE Trac" → "Uni Trac 2.0"** (UPDATE do nome, o id é preservado, então
+  `dispositivo_model`/PROD-0156 e os componentes continuam ligados), **"Bateria EX" e
+  "Garra OEE Trac" escondidos** e **"Gravação UV SRU G2" criado** (0,05).
+  O de-para de nome mora em `api/_lib/dispositivos.js` (`nomeCanonico`/`estaOculto`) e é aplicado
+  nos três caminhos que criam dispositivo a partir de texto da planilha — `importacao.js`,
+  `dimensionamento.js?acao=tempos` e `forecast.js` (este último passou a aceitar "OEE Trac" no
+  mapa Model→dispositivo em vez de responder 400). A importação **não sobrescreve mais**
+  `ordem`/`ativo`/`meta_padrao` de quem já existe: isso é do cadastro, não da planilha.
+  O cadastro de **produtos** não foi renomeado — em Processos e sequências o roteiro segue em
+  "OEE Trac" (e o produto "UniTrac 2.0" já existia lá, sem espaço).
+- 2026-08-27 — **Produto se cadastra na tela de Processos e sequências** (`POST
+  /api/roteiros?acao=produto`, botão "Novo produto"). Produto é a unidade de roteiro e um
+  cadastro global — nenhum cenário o copia —, então criar um basta para ele valer em todo
+  processo. O nome é chave natural, gravado com `trim()` (a planilha tinha "Smart Trac Ultra
+  Gen 2" e a variante com espaço no fim como produtos distintos) e nome repetido volta 409.
+  Junto: **a tabela passou a listar produto sem processo** como grupo vazio, com o atalho para
+  lançar o primeiro passo — sem isso o produto recém-criado ficava invisível até ganhar roteiro.
+  O grupo vazio some sob filtro de tipo de linha (esse filtro é sobre processos) e respeita a
+  busca por texto pelo próprio nome. O contador virou "N processo(s) em M produto(s) · K sem
+  roteiro"; os 3 órfãos que já existiam pararam de ficar escondidos.
+  **Efeito nos cenários existentes**: a migration preenche meta e termo dos cenários criados no
+  app, com duas travas — `NOT importado` (as 23 baselines da planilha ficam intactas) e
+  `meta_min_peca = 0` (meta digitada à mão é preservada).
 
 ---
 

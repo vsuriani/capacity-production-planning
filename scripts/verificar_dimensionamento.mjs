@@ -3,7 +3,8 @@
  * mês e a camada de ajuste que sobrepõe o forecast.
  *
  * A tela é uma **simulação sem cenário** — este script prova isso partindo de um banco onde a
- * planilha nunca foi importada: nenhum `cenario`, nenhum `dispositivo`, só as migrations.
+ * planilha nunca foi importada: nenhum `cenario`, só as migrations (que já trazem o catálogo de
+ * dispositivos, mas nenhum tempo decomposto).
  *
  * Roda num Postgres em WASM próprio — não toca o banco de dev.
  *
@@ -81,9 +82,13 @@ const contar = async (tabela) =>
 
 console.log('\nbanco sem planilha importada')
 conferir('cenários', await contar('cenario'), 0)
-conferir('dispositivos', await contar('dispositivo'), 0)
+// O catálogo de dispositivos não vem mais da planilha: os 23 são semeados pela migration 006,
+// com nome, ordem e tempo-padrão. "Sem planilha importada" hoje quer dizer sem cenário e sem
+// tempo decomposto, não sem cadastro.
+conferir('dispositivos do catálogo', await contar('dispositivo'), 23)
 
 const vazia = await grade()
+// A grade do Global lista quem tem tempo decomposto em dispositivo_metrica — ainda ninguém.
 conferir('a rota responde mesmo assim', vazia.dispositivos.length, 0)
 conferir('e sem meses', vazia.meses.length, 0)
 
@@ -94,15 +99,20 @@ console.log('\ntempos por dispositivo')
 const tempos = lerTempos(raiz)
 const cargaTempos = await pedir('POST', 'dimensionamento?acao=tempos', { tempos })
 conferir('dispositivos', cargaTempos.dispositivos, 11)
-conferir('criados no cadastro', cargaTempos.dispositivosCriados, 11)
+// Nenhum criado: os 11 nomes do TSV já estão no catálogo da migration 006 (o "OEE Trac" do
+// arquivo casa com "Uni Trac 2.0" via `nomeCanonico`). A rota segue sabendo criar — é o que
+// mantém a tela de pé num banco onde o catálogo ainda não conhece o dispositivo.
+conferir('criados no cadastro', cargaTempos.dispositivosCriados, 0)
 conferir('componentes', cargaTempos.componentes, tempos.reduce((s, t) => s + t.componentes.length, 0))
 
 // Recarregar substitui, não duplica.
 await pedir('POST', 'dimensionamento?acao=tempos', { tempos })
 conferir('recarregar não duplica componentes', await contar('dispositivo_metrica'), cargaTempos.componentes)
-conferir('nem cria dispositivo de novo', await contar('dispositivo'), 11)
+conferir('nem cria dispositivo de novo', await contar('dispositivo'), 23)
 
-// Os totais da tabela de tempos, conferidos contra o motor.
+// Os totais da tabela de tempos, conferidos contra o motor. O TSV é uma captura da planilha e
+// não se corrige na origem, então o nome dele passa pelo mesmo de-para da rota.
+const { nomeCanonico } = require(path.join(raiz, 'api', '_lib', 'dispositivos.js'))
 let d = await grade()
 const totalDe = new Map(
   readFileSync(path.join(raiz, 'docs', 'tempos-dispositivo.tsv'), 'utf8')
@@ -111,7 +121,7 @@ const totalDe = new Map(
     .slice(1)
     .map((l) => l.split('\t'))
     .filter((l) => l[1] === 'total')
-    .map((l) => [l[0], { parcial: Number(l[3]), real: Number(l[4]) }]),
+    .map((l) => [nomeCanonico(l[0]), { parcial: Number(l[3]), real: Number(l[4]) }]),
 )
 const divergentes = d.metricas.filter((m) => {
   const esperado = totalDe.get(m.dispositivo)
@@ -174,11 +184,13 @@ conferir(
   somaDosModels('Smart Trac Ultra Gen 2 EX', 'Setembro/2026'),
   naLinha('Smart Trac Ultra Gen 2 EX', 'Setembro/2026'),
 )
-// PROD-0177 ficou só em Uni Trac (a linha OEET saiu do forecast).
+// PROD-0177 ficou só em Uni Trac (a linha OEET saiu do forecast). O dispositivo se chama
+// "Uni Trac 2.0" desde a migration 006; nos arquivos de origem ele ainda é "OEE Trac", e é o
+// `nomeCanonico` da rota que costura os dois.
 const doOee = d.models.filter(
-  (m) => m.dispositivoId === d.dispositivos.find((x) => x.nome === 'OEE Trac').id,
+  (m) => m.dispositivoId === d.dispositivos.find((x) => x.nome === 'Uni Trac 2.0').id,
 )
-conferir('OEE Trac abre só em', doOee.map((m) => m.model).join(', '), 'PROD-0156')
+conferir('Uni Trac 2.0 (ex-OEE Trac) abre só em', doOee.map((m) => m.model).join(', '), 'PROD-0156')
 
 // Sem dias úteis digitados, todo mês é #DIV/0! — é a decisão de não auto-preencher.
 conferir('mês sem dias úteis não calcula', d.resultados[0].erro, 'dias-uteis-zero')

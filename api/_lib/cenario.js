@@ -32,6 +32,11 @@ async function carregarCenario(cenarioId) {
   ).rows;
   if (!cenario) return null;
 
+  // Dispositivo inativo é filtrado aqui, na entrada, e não no motor: assim `calcularCenario` e
+  // `calcularOperadores` seguem sem saber que `ativo` existe, e esconder um dispositivo o tira
+  // da grade E da soma de uma vez só. O dado dele continua gravado.
+  const ativos = 'SELECT id FROM dispositivo WHERE ativo';
+
   const [periodos, metas, demandas, termos, componentes, dispositivos] = await Promise.all([
     query(
       `SELECT periodo, ordem, dias_uteis, arredondado_manual FROM cenario_periodo
@@ -39,32 +44,36 @@ async function carregarCenario(cenarioId) {
       [cenarioId],
     ),
     query(
-      `SELECT dispositivo_id, meta_min_peca FROM cenario_meta WHERE cenario_id = $1`,
+      `SELECT dispositivo_id, meta_min_peca FROM cenario_meta
+        WHERE cenario_id = $1 AND dispositivo_id IN (${ativos})`,
       [cenarioId],
     ),
     query(
-      `SELECT dispositivo_id, periodo, quantidade FROM cenario_demanda WHERE cenario_id = $1`,
+      `SELECT dispositivo_id, periodo, quantidade FROM cenario_demanda
+        WHERE cenario_id = $1 AND dispositivo_id IN (${ativos})`,
       [cenarioId],
     ),
     query(
+      // Os dois lados do par: um termo que usa a quantidade de um dispositivo escondido também
+      // sai da soma, senão sobrariam minutos sem linha visível que os explique.
       `SELECT periodo, meta_dispositivo_id, qtd_dispositivo_id, qtd_periodo, ordem
-         FROM cenario_formula_par WHERE cenario_id = $1 ORDER BY periodo, ordem`,
+         FROM cenario_formula_par
+        WHERE cenario_id = $1
+          AND meta_dispositivo_id IN (${ativos})
+          AND qtd_dispositivo_id IN (${ativos})
+        ORDER BY periodo, ordem`,
       [cenarioId],
     ),
     query(
       `SELECT id, dispositivo_id, ordem, rotulo, papel, valor
-         FROM metrica_componente WHERE cenario_id = $1 ORDER BY dispositivo_id, ordem`,
+         FROM metrica_componente
+        WHERE cenario_id = $1 AND dispositivo_id IN (${ativos})
+        ORDER BY dispositivo_id, ordem`,
       [cenarioId],
     ),
-    query(
-      `SELECT DISTINCT d.id, d.nome, d.ordem
-         FROM dispositivo d
-        WHERE d.id IN (SELECT dispositivo_id FROM cenario_meta WHERE cenario_id = $1)
-           OR d.id IN (SELECT dispositivo_id FROM cenario_demanda WHERE cenario_id = $1)
-           OR d.id IN (SELECT dispositivo_id FROM metrica_componente WHERE cenario_id = $1)
-        ORDER BY d.ordem, d.nome`,
-      [cenarioId],
-    ),
+    // TODOS os dispositivos ativos, não só os que já têm linha neste cenário: a grade mostra o
+    // dispositivo zerado para que ele possa receber meta e demanda sem passar por cadastro.
+    query('SELECT id, nome, ordem FROM dispositivo WHERE ativo ORDER BY ordem, nome'),
   ]);
 
   return {

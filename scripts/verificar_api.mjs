@@ -87,11 +87,15 @@ try {
   const comResultado = detalhe.resultados.filter((r) => r.operadores !== null)
   ok(`períodos calculados: ${comResultado.length}`)
 
+  // A planilha dá 9.659084967320263 aqui. O app fica abaixo porque "Ima na Base" foi escondido
+  // (`dispositivo.ativo = false`, migration 005) e saiu da soma junto com a tela: o termo dele
+  // valia 1 min/pç × 4000 pç = 4000 min, e 4000 / 60 / (5 dias × 7,5 h) / 0,85 = 2,0915032679…,
+  // exatamente a diferença. O resto do período segue reproduzindo a planilha.
   const semana45 = detalhe.resultados.find((r) => r.periodo === 'Week 45')
-  if (semana45 && Math.abs(semana45.operadoresFracionario - 9.659084967320263) < 1e-9) {
-    ok(`Week 45 reproduz a planilha: ${semana45.operadoresFracionario}`)
+  if (semana45 && Math.abs(semana45.operadoresFracionario - 7.567581699346405) < 1e-9) {
+    ok(`Week 45 reproduz a planilha menos os ocultos: ${semana45.operadoresFracionario}`)
   } else {
-    falha(`Week 45: ${semana45?.operadoresFracionario}, esperava 9.659084967320263`)
+    falha(`Week 45: ${semana45?.operadoresFracionario}, esperava 7.567581699346405`)
   }
 
   const ids = detalhe.diagnosticos.map((d) => d.id).sort()
@@ -168,6 +172,43 @@ try {
   conferir('processos', roteiros.processos.length, 87)
   ok(`produtos: ${roteiros.produtos.length}, sem roteiro: ${roteiros.produtosSemRoteiro.length}`)
   conferir('aliases', roteiros.aliases.length, 1)
+
+  // Cadastro de produto pela própria tela de Processos e sequências.
+  const novoProduto = await pedir('POST', 'roteiros?acao=produto', { nome: '  Produto Teste  ' })
+  conferir('produto criado com o nome aparado', novoProduto.nome, 'Produto Teste')
+  const comProduto = await pedir('GET', 'roteiros')
+  conferir('entra no cadastro', comProduto.produtos.length, roteiros.produtos.length + 1)
+  if (comProduto.processos.every((p) => p.produto_id !== novoProduto.id)) {
+    ok('e nasce sem processo — a tela mostra como grupo vazio')
+  } else {
+    falha('produto novo não deveria nascer com processo')
+  }
+  try {
+    await pedir('POST', 'roteiros?acao=produto', { nome: 'Produto Teste' })
+    falha('nome repetido deveria dar 409')
+  } catch {
+    ok('nome repetido é rejeitado')
+  }
+  try {
+    await pedir('POST', 'roteiros?acao=produto', { nome: '   ' })
+    falha('nome vazio deveria dar 400')
+  } catch {
+    ok('nome vazio é rejeitado')
+  }
+  // O processo criado nele prova o encadeamento produto novo -> roteiro.
+  const { id: processoNovo } = await pedir('POST', 'roteiros', {
+    produtoId: novoProduto.id,
+    tipoLinha: 'producao_montagem',
+    nome: 'Montagem Produto Teste',
+    sequencia: 1,
+  })
+  const comProcesso = await pedir('GET', 'roteiros')
+  conferir(
+    'processo atrelado ao produto novo',
+    comProcesso.processos.filter((p) => p.produto_id === novoProduto.id).length,
+    1,
+  )
+  await pedir('DELETE', `roteiros?id=${processoNovo}`)
 
   const sku = await pedir('GET', 'sku')
   conferir('total de SKU', sku.total, 199)

@@ -40,6 +40,9 @@ const NOVO_VAZIO = {
  * É o roteiro que a explosão de demanda lê, e todo campo dele é editável aqui — inclusive o
  * produto, que move o processo de grupo. Total/dia é a única célula derivada: escrever nela
  * grava `Pç/hr = total ÷ 8`.
+ *
+ * O produto também se cadastra aqui. Ele é a unidade de roteiro e um cadastro global (nenhum
+ * cenário o copia), então criar um basta para ele já valer em todo processo.
  */
 export function Roteiros() {
   const { dados, erro, carregando, recarregar } = useApi<Dados>('roteiros')
@@ -50,6 +53,8 @@ export function Roteiros() {
   const [tipoFiltro, setTipoFiltro] = useState<TipoLinha | ''>('')
   const [criando, setCriando] = useState(false)
   const [novo, setNovo] = useState(NOVO_VAZIO)
+  const [criandoProduto, setCriandoProduto] = useState(false)
+  const [novoProduto, setNovoProduto] = useState('')
 
   const opcoesProduto = useMemo(
     () => (dados?.produtos ?? []).map((p) => ({ valor: String(p.id), rotulo: p.nome })),
@@ -79,13 +84,30 @@ export function Roteiros() {
     )
   }, [dados, filtro, tipoFiltro])
 
+  /**
+   * Um grupo por produto, em ordem de nome — inclusive o produto que ainda não tem processo
+   * nenhum. É assim que um produto recém-cadastrado aparece, e que os que já estavam órfãos
+   * param de ficar invisíveis.
+   *
+   * O grupo vazio some quando há filtro por tipo de linha: esse filtro é sobre processos, e um
+   * produto sem processo não é resposta para "só defasagem". O filtro por texto ele respeita,
+   * casando pelo próprio nome.
+   */
   const porProduto = useMemo(() => {
+    const termo = filtro.trim().toLowerCase()
     const mapa = new Map<string, Processo[]>()
+
+    for (const p of dados?.produtos ?? []) mapa.set(p.nome, [])
     for (const p of visiveis) {
       if (!mapa.has(p.produto)) mapa.set(p.produto, [])
       mapa.get(p.produto)!.push(p)
     }
-    for (const lista of mapa.values()) {
+
+    for (const [nome, lista] of mapa) {
+      if (!lista.length) {
+        if (tipoFiltro || (termo && !nome.toLowerCase().includes(termo))) mapa.delete(nome)
+        continue
+      }
       lista.sort(
         (a, b) =>
           ORDEM_TIPO.indexOf(a.tipo_linha) - ORDEM_TIPO.indexOf(b.tipo_linha) ||
@@ -93,7 +115,12 @@ export function Roteiros() {
       )
     }
     return mapa
-  }, [visiveis])
+  }, [dados, visiveis, filtro, tipoFiltro])
+
+  const semRoteiro = useMemo(
+    () => [...porProduto.values()].filter((l) => l.length === 0).length,
+    [porProduto],
+  )
 
   /** Próximo degrau da sequência daquele produto + tipo de linha, que é o padrão do formulário. */
   const proximaSequencia = useMemo(() => {
@@ -127,10 +154,35 @@ export function Roteiros() {
     salvar(p.id, { pcsHora: total / HORAS_DIA })
   }
 
-  function abrirCriacao() {
+  /** `produtoId` vem preenchido quando o lançamento parte do grupo de um produto sem roteiro. */
+  function abrirCriacao(produtoId?: number) {
     setErroSalvar(null)
-    setNovo({ ...NOVO_VAZIO, produtoId: dados?.produtos[0]?.id ?? 0 })
+    setCriandoProduto(false)
+    setNovo({ ...NOVO_VAZIO, produtoId: produtoId ?? dados?.produtos[0]?.id ?? 0 })
     setCriando(true)
+  }
+
+  function abrirCriacaoProduto() {
+    setErroSalvar(null)
+    setNovoProduto('')
+    setCriando(false)
+    setCriandoProduto(true)
+  }
+
+  /**
+   * O formulário fica aberto e o campo limpo depois de gravar — cadastrar produto costuma vir
+   * em lote. O produto novo aparece na tabela como grupo vazio, com o atalho para o 1º passo.
+   */
+  async function criarProduto() {
+    const nome = novoProduto.trim()
+    if (!nome) {
+      setErroSalvar('Dê um nome ao produto.')
+      return
+    }
+    await agir(async () => {
+      await apiPost('roteiros?acao=produto', { nome })
+      setNovoProduto('')
+    })
   }
 
   async function criar() {
@@ -187,6 +239,12 @@ export function Roteiros() {
             value={filtro}
             onChange={(e) => setFiltro(e.target.value)}
           />
+          <button
+            className="btn-ghost"
+            onClick={() => (criandoProduto ? setCriandoProduto(false) : abrirCriacaoProduto())}
+          >
+            <Plus size={15} /> Novo produto
+          </button>
           <button className="btn-primary" onClick={() => (criando ? setCriando(false) : abrirCriacao())}>
             <Plus size={15} /> Novo processo
           </button>
@@ -194,6 +252,37 @@ export function Roteiros() {
       </div>
 
       <Erro mensagem={erro ?? erroSalvar} />
+
+      {criandoProduto && (
+        <section className="panel px-4 py-4 mb-5">
+          <h2 className="font-heading font-semibold text-sm mb-1">Novo produto</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Produto é a unidade de roteiro e um cadastro <strong>global</strong>: nenhum cenário o
+            copia, todos apontam para ele. Nasce sem processo e aparece na tabela como grupo vazio
+            — é de lá que se lança o primeiro passo. O nome é a chave, então não repete.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block flex-1 min-w-64">
+              <span className="label-overline">Nome do produto</span>
+              <input
+                className="input-field"
+                placeholder="ex.: Smart Trac Ultra Gen 3"
+                value={novoProduto}
+                onChange={(e) => setNovoProduto(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && criarProduto()}
+              />
+            </label>
+
+            <button className="btn-primary" onClick={criarProduto}>
+              Criar produto
+            </button>
+            <button className="btn-ghost" onClick={() => setCriandoProduto(false)}>
+              Fechar
+            </button>
+          </div>
+        </section>
+      )}
 
       {criando && dados && (
         <section className="panel px-4 py-4 mb-5">
@@ -308,7 +397,10 @@ export function Roteiros() {
           <section className="panel overflow-hidden">
             <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">
-                {visiveis.length} processo(s) em {porProduto.size} produto(s)
+                {visiveis.length} processo(s) em {porProduto.size - semRoteiro} produto(s)
+                {semRoteiro > 0 && (
+                  <span className="text-slate-500 font-normal"> · {semRoteiro} sem roteiro</span>
+                )}
               </h2>
               <span className="text-xs text-slate-500">
                 Leadtime em dias regressivos até a produção
@@ -338,9 +430,25 @@ export function Roteiros() {
                       <tr className="bg-slate-50">
                         <td className="td font-semibold" colSpan={11}>
                           {produto}{' '}
-                          <span className="text-slate-500 font-normal">
-                            · {lista.length} processo(s)
-                          </span>
+                          {lista.length > 0 ? (
+                            <span className="text-slate-500 font-normal">
+                              · {lista.length} processo(s)
+                            </span>
+                          ) : (
+                            <>
+                              <span className="chip-warn ml-1">sem roteiro</span>
+                              <button
+                                className="ml-3 font-normal text-primary-700 hover:underline"
+                                onClick={() =>
+                                  abrirCriacao(
+                                    dados.produtos.find((p) => p.nome === produto)?.id,
+                                  )
+                                }
+                              >
+                                lançar o primeiro processo
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                       {lista.map((p) => (

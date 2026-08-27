@@ -65,9 +65,12 @@ async function carregarDimensionamento() {
   ] = await Promise.all([
     parametrosGlobais(),
     query(
+      // `d.ativo` recorta a tela inteira: `dispositivos`, `metas` e `demandas` do Global saem
+      // todos daqui (ver `calcularDimensionamento`), então um filtro só basta.
       `SELECT m.id, m.dispositivo_id, m.ordem, m.rotulo, m.papel, m.valor, d.nome AS dispositivo
          FROM dispositivo_metrica m
          JOIN dispositivo d ON d.id = m.dispositivo_id
+        WHERE d.ativo
         ORDER BY d.ordem, d.nome, m.ordem`,
     ),
     query('SELECT ano, mes, dias_uteis FROM global_mes'),

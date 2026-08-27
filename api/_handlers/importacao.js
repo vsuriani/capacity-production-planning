@@ -2,6 +2,7 @@
 
 const { exigirAuth } = require('../_lib/auth');
 const { query, transacao } = require('../_lib/db');
+const { nomeCanonico, estaOculto } = require('../_lib/dispositivos');
 
 /**
  * Recebe o payload do importador (scripts/importar_planilha.py) e grava no banco.
@@ -204,15 +205,26 @@ async function gravarSkuProduto(c, lista = [], produtos, avisos) {
   return gravados;
 }
 
-/** @returns {Map<string, number>} nome do dispositivo -> id */
+/**
+ * Grava o cadastro de dispositivos do payload.
+ *
+ * O nome é traduzido na entrada (`nomeCanonico`), mas o mapa devolvido continua indexado pelo
+ * nome ORIGINAL: é por ele que as metas e as demandas do payload procuram o id logo adiante.
+ *
+ * @returns {Map<string, number>} nome do dispositivo no payload -> id
+ */
 async function gravarDispositivos(c, lista = []) {
   const mapa = new Map();
   for (const d of lista) {
+    const nome = nomeCanonico(d.nome);
     const { rows } = await c.query(
-      `INSERT INTO dispositivo (nome, ordem) VALUES ($1, $2)
-       ON CONFLICT (nome) DO UPDATE SET ordem = EXCLUDED.ordem
+      // Quem já existe não é tocado: `ordem`, `ativo` e `meta_padrao` são do catálogo
+      // (migration 006) e do app, não da planilha. O `DO UPDATE` que não muda nada é só para
+      // o `RETURNING id` valer também no conflito.
+      `INSERT INTO dispositivo (nome, ordem, ativo) VALUES ($1, $2, $3)
+       ON CONFLICT (nome) DO UPDATE SET nome = EXCLUDED.nome
        RETURNING id`,
-      [d.nome, d.ordem ?? 0],
+      [nome, d.ordem ?? 0, !estaOculto(nome)],
     );
     mapa.set(d.nome, rows[0].id);
   }

@@ -61,6 +61,35 @@ async function salvar(req, res) {
     for (const k of componentes) {
       await c.query('UPDATE metrica_componente SET valor = $2 WHERE id = $1', [k.id, k.valor]);
     }
+
+    // A grade mostra todo dispositivo ativo, inclusive os que este cenário nunca teve. Sem termo
+    // em `cenario_formula_par` eles ficam fora da soma, e digitar meta e demanda não moveria o
+    // headcount — a célula aceitaria o número e nada aconteceria. Então o termo alinhado nasce
+    // no primeiro salvamento de cada dispositivo.
+    //
+    // É a ação `incluir-faltantes` recortada a um dispositivo, e de propósito só para quem o
+    // usuário editou: o cenário fiel à planilha não ganha termo nenhum enquanto ninguém mexer
+    // nele, e o diagnóstico `dispositivos-fora-da-soma` segue valendo para os pares que a
+    // planilha deixou de fora.
+    const tocados = new Set(
+      [...metas, ...demandas].map((x) => x.dispositivoId).filter((x) => x != null),
+    );
+    for (const dispositivoId of tocados) {
+      await c.query(
+        `INSERT INTO cenario_formula_par
+           (cenario_id, periodo, meta_dispositivo_id, qtd_dispositivo_id, ordem)
+         SELECT $1, p.periodo, $2, $2, 999
+           FROM cenario_periodo p
+          WHERE p.cenario_id = $1
+            AND NOT EXISTS (
+              SELECT 1 FROM cenario_formula_par f
+               WHERE f.cenario_id = $1
+                 AND f.periodo = p.periodo
+                 AND f.meta_dispositivo_id = $2
+            )`,
+        [cenarioId, dispositivoId],
+      );
+    }
   });
 
   res.json({ ok: true });

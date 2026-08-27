@@ -194,8 +194,9 @@ async function criar(req, res, email) {
  * Os cadastros globais (Base de PROD, processos e sequências, mapa SKU→produto) não são
  * copiados — o cenário aponta para eles. O que entra aqui é o que é POR cenário:
  *
- *   - os dispositivos e o tempo-padrão de cada um (a coluna Meta), herdados do cenário
- *     SEMANAL vigente, qualquer que seja o tipo do cenário novo
+ *   - uma linha para cada dispositivo ATIVO, com a coluna Meta copiada do tempo-padrão do
+ *     cadastro (`dispositivo.meta_padrao`) — todo cenário nasce com a mesma grade e os mesmos
+ *     tempos, e a partir daí a Meta é editável dentro do cenário sem afetar os outros
  *   - os períodos do mês, com os dias úteis já contados do calendário e dos feriados
  *   - um termo de fórmula ALINHADO por dispositivo: cenário novo nasce correto, sem
  *     herdar os pares desalinhados da planilha
@@ -212,14 +213,17 @@ async function semear(c, corpo, email) {
   );
   const id = rows[0].id;
 
-  const baseId = await baseDosTempos(c, id);
+  // Todos os dispositivos ativos, com o tempo-padrão do cadastro. Não se herda mais do último
+  // cenário: o padrão é do cadastro, e o que o usuário digitar aqui fica só aqui.
+  await c.query(
+    `INSERT INTO cenario_meta (cenario_id, dispositivo_id, meta_min_peca)
+     SELECT $1, id, meta_padrao FROM dispositivo WHERE ativo`,
+    [id],
+  );
+
+  const baseId = await baseDosCoeficientes(c, id);
 
   if (baseId) {
-    await c.query(
-      `INSERT INTO cenario_meta (cenario_id, dispositivo_id, meta_min_peca)
-       SELECT $1, dispositivo_id, meta_min_peca FROM cenario_meta WHERE cenario_id = $2`,
-      [id, baseId],
-    );
     await c.query(
       `INSERT INTO cenario_parametro (cenario_id, chave, valor)
        SELECT $1, chave, valor FROM cenario_parametro WHERE cenario_id = $2`,
@@ -235,18 +239,13 @@ async function semear(c, corpo, email) {
     if (metrica[0]) {
       await c.query(
         `INSERT INTO metrica_componente (cenario_id, dispositivo_id, ordem, rotulo, papel, valor)
-         SELECT $1, dispositivo_id, ordem, rotulo, papel, valor
-           FROM metrica_componente WHERE cenario_id = $2`,
+         SELECT $1, k.dispositivo_id, k.ordem, k.rotulo, k.papel, k.valor
+           FROM metrica_componente k
+           JOIN dispositivo d ON d.id = k.dispositivo_id
+          WHERE k.cenario_id = $2 AND d.ativo`,
         [id, metrica[0].id],
       );
     }
-  } else {
-    // Primeiro cenário do tipo: entra com todos os dispositivos e meta a preencher.
-    await c.query(
-      `INSERT INTO cenario_meta (cenario_id, dispositivo_id, meta_min_peca)
-       SELECT $1, id, 0 FROM dispositivo WHERE ativo`,
-      [id],
-    );
   }
 
   // Períodos com os dias úteis contados de verdade.
@@ -291,25 +290,25 @@ async function semear(c, corpo, email) {
 }
 
 /**
- * De onde saem os tempos por dispositivo de um cenário novo.
+ * De onde saem os COEFICIENTES próprios (`cenario_parametro`) de um cenário novo.
  *
- * **O semanal é o padrão, seja qual for o tipo do cenário novo.** Ele é o único com tela de
+ * Os tempos por dispositivo não passam mais por aqui — desde a migration 006 eles vêm de
+ * `dispositivo.meta_padrao`, para que o padrão pare de andar sozinho a cada edição de cenário.
+ * O que sobrou é a herança da jornada e dos coeficientes, que hoje só o cenário de capacidade
+ * carrega (a planilha os tem em D56/D58); os demais caem nos globais de `parametro`.
+ *
+ * **O semanal é o preferido, seja qual for o tipo do cenário novo.** Ele é o único com tela de
  * planejamento e o único que se mantém; quando cada tipo herdava do último do próprio tipo, um
- * cenário mensal novo nascia com os tempos de um mensal parado no tempo — foi assim que o
- * mensal de Agosto/2026 nasceu com os 26 dispositivos zerados enquanto o semanal do mesmo mês
- * tinha 23 preenchidos.
- *
- * Exige ao menos um tempo maior que zero: cenário com a coluna Meta toda zerada não carrega
- * padrão nenhum, e elegê-lo como base só propagaria o vazio. Sem nenhum candidato, quem chama
- * cai no caminho de semear todos os dispositivos com 0.
+ * cenário mensal nascia com a configuração de um mensal parado no tempo.
  */
-async function baseDosTempos(c, novoId) {
+async function baseDosCoeficientes(c, novoId) {
   const { rows } = await c.query(
     `SELECT b.id
        FROM cenario b
       WHERE b.id <> $1
-        AND EXISTS (SELECT 1 FROM cenario_meta m
-                     WHERE m.cenario_id = b.id AND m.meta_min_peca > 0)
+        -- Um cenário já montado. O "meta_min_peca > 0" que havia aqui era de quando esta função
+        -- escolhia a base dos TEMPOS; com a Meta vindo do cadastro, ele não filtra mais nada.
+        AND EXISTS (SELECT 1 FROM cenario_meta m WHERE m.cenario_id = b.id)
       ORDER BY (b.tipo = 'semanal') DESC, b.oficial DESC, b.criado_em DESC
       LIMIT 1`,
     [novoId],

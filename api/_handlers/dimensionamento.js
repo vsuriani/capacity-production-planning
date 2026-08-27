@@ -3,6 +3,7 @@
 const { exigirAuth } = require('../_lib/auth');
 const { query, transacao } = require('../_lib/db');
 const { carregarDimensionamento, calcularDimensionamento } = require('../_lib/dimensionamento');
+const { nomeCanonico, estaOculto } = require('../_lib/dispositivos');
 const { diasUteisDoMes } = require('../_lib/motor/calendario');
 
 /**
@@ -137,14 +138,16 @@ async function gravarTempos(req, res) {
     await c.query('DELETE FROM dispositivo_metrica');
 
     for (const t of tempos) {
-      let dispositivoId = idDe.get(t.dispositivo);
+      // A tabela de tempos vem da planilha e ainda usa os nomes antigos.
+      const nome = nomeCanonico(t.dispositivo);
+      let dispositivoId = idDe.get(nome);
       if (!dispositivoId) {
         const { rows: inserido } = await c.query(
-          'INSERT INTO dispositivo (nome, ordem) VALUES ($1, $2) RETURNING id',
-          [t.dispositivo, proximaOrdem++],
+          'INSERT INTO dispositivo (nome, ordem, ativo) VALUES ($1, $2, $3) RETURNING id',
+          [nome, proximaOrdem++, !estaOculto(nome)],
         );
         dispositivoId = inserido[0].id;
-        idDe.set(t.dispositivo, dispositivoId);
+        idDe.set(nome, dispositivoId);
         novos++;
       }
 

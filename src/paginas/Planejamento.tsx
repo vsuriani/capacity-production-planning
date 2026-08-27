@@ -206,6 +206,11 @@ export function Planejamento() {
                 </tfoot>
               </table>
             </div>
+            <footer className="px-4 py-2 border-t border-slate-200 text-xs text-slate-500">
+              A grade lista todo dispositivo ativo, mesmo o que ainda não tem meta, demanda ou
+              roteiro cadastrado — ele aparece zerado e passa a contar assim que receber um
+              número. Dispositivo fora de uso é escondido no cadastro e sai também da soma.
+            </footer>
           </section>
         </div>
       )}

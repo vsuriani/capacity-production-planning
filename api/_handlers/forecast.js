@@ -2,6 +2,7 @@
 
 const { exigirAuth } = require('../_lib/auth');
 const { query, transacao } = require('../_lib/db');
+const { nomeCanonico } = require('../_lib/dispositivos');
 
 /**
  * O forecast externo e o mapa Model -> dispositivo.
@@ -56,16 +57,18 @@ async function substituir(req, res) {
   if (!Array.isArray(linhas)) return res.status(400).json({ erro: 'linhas obrigatórias' });
 
   // Resolve os dispositivos pelo nome antes de abrir a transação, para um nome errado falhar
-  // alto em vez de gravar um mapa pela metade.
+  // alto em vez de gravar um mapa pela metade. O nome passa por `nomeCanonico`: a planilha de
+  // origem ainda traz "OEE Trac", que hoje é "Uni Trac 2.0".
   let mapaResolvido = null;
   if (Array.isArray(mapa)) {
     const { rows } = await query('SELECT id, nome FROM dispositivo');
     const idDe = new Map(rows.map((r) => [r.nome, r.id]));
-    const faltando = [...new Set(mapa.map((m) => m.dispositivo).filter((n) => !idDe.has(n)))];
+    const nomes = mapa.map((m) => nomeCanonico(m.dispositivo));
+    const faltando = [...new Set(nomes.filter((n) => !idDe.has(n)))];
     if (faltando.length) {
       return res.status(400).json({ erro: `dispositivo não cadastrado: ${faltando.join(', ')}` });
     }
-    mapaResolvido = mapa.map((m) => ({ model: m.model, dispositivoId: idDe.get(m.dispositivo) }));
+    mapaResolvido = mapa.map((m, i) => ({ model: m.model, dispositivoId: idDe.get(nomes[i]) }));
   }
 
   await transacao(async (c) => {

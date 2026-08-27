@@ -81,7 +81,10 @@ for (const tabela of [
   'cenario_formula_par', 'metrica_componente', 'projecao_slot', 'demanda_processo',
 ]) {
   const { rows } = await db.query(`SELECT count(*)::int AS n FROM ${tabela}`)
-  const esperado = { sku: 199, processo: 87, dispositivo: 26, cenario: 23, projecao_slot: 27, demanda_processo: 75 }[tabela]
+  // dispositivo = 27: os 23 do catálogo (migration 006, que roda antes da importação) mais os 4
+  // que só a planilha ainda lista e que entram inativos — Ima na Base, Tampografia, Bateria EX e
+  // Garra OEE Trac. O "OEE Trac" do payload não vira linha nova: é traduzido para "Uni Trac 2.0".
+  const esperado = { sku: 199, processo: 87, dispositivo: 27, cenario: 23, projecao_slot: 27, demanda_processo: 75 }[tabela]
   if (esperado !== undefined) conferir(`${tabela} após 2ª carga`, rows[0].n, esperado)
   else ok(`${tabela}: ${rows[0].n}`)
 }

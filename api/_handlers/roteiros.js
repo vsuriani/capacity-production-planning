@@ -6,9 +6,10 @@ const { query } = require('../_lib/db');
 /**
  * Processos e sequências (aba Base simplificada).
  *
- * GET    /api/roteiros            -> produtos + processos + pendências
- * POST   /api/roteiros            -> cria processo
- * PATCH  /api/roteiros?id=N       -> altera processo
+ * GET    /api/roteiros                -> produtos + processos + pendências
+ * POST   /api/roteiros                -> cria processo
+ * POST   /api/roteiros?acao=produto   -> cria produto  { nome }
+ * PATCH  /api/roteiros?id=N           -> altera processo
  * DELETE /api/roteiros?id=N
  */
 const CAMPOS = {
@@ -29,7 +30,9 @@ async function handler(req, res) {
   const id = req.query.id ? Number(req.query.id) : null;
 
   if (req.method === 'GET') return listar(res);
-  if (req.method === 'POST') return criar(req, res);
+  if (req.method === 'POST') {
+    return req.query.acao === 'produto' ? criarProduto(req, res) : criar(req, res);
+  }
   if (req.method === 'PATCH') return atualizar(id, req, res);
   if (req.method === 'DELETE') {
     if (!id) return res.status(400).json({ erro: 'id obrigatório' });
@@ -68,6 +71,31 @@ async function listar(res) {
     aliases: aliases.rows,
     produtosSemRoteiro: semRoteiro.rows,
   });
+}
+
+/**
+ * Cria um produto (a unidade de roteiro).
+ *
+ * Produto é cadastro global — não pertence a cenário nenhum, e é por isso que criar um aqui
+ * basta para ele já aparecer no seletor de todo processo. Nasce sem roteiro: a tela mostra o
+ * grupo vazio para que o primeiro passo seja lançado em seguida.
+ *
+ * O nome é chave natural (`produto.nome` é UNIQUE) e a planilha tinha "Smart Trac Ultra Gen 2" e
+ * "Smart Trac Ultra Gen 2 " como produtos distintos — daí o `trim()` antes de gravar. Nome que
+ * já existe volta 409 com o id de quem ocupou, para a tela poder apontar o produto certo em vez
+ * de só reclamar.
+ */
+async function criarProduto(req, res) {
+  const nome = String(req.body?.nome ?? '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome é obrigatório' });
+
+  const { rows: existente } = await query('SELECT id FROM produto WHERE nome = $1', [nome]);
+  if (existente[0]) {
+    return res.status(409).json({ erro: `Já existe o produto "${nome}"`, id: existente[0].id });
+  }
+
+  const { rows } = await query('INSERT INTO produto (nome) VALUES ($1) RETURNING id, nome', [nome]);
+  res.json(rows[0]);
 }
 
 async function criar(req, res) {
