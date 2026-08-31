@@ -148,7 +148,20 @@ Gotchas do dev:
 - `process.exit()` durante o teardown do pglite dispara um assert do libuv no Windows — use
   `process.exitCode`.
 - **Não mate o dev server com `Stop-Process -Force`**: o datadir do pglite não sobrevive e o
-  próximo boot falha em `_pg_initdb`. Use Ctrl+C. Se corromper: `rm -rf .cache/pgdata` e reimporte.
+  próximo boot falha em `_pg_initdb`. Use Ctrl+C. Se corromper: `rm -rf .cache/pgdata` e
+  restaure o seed (abaixo) — reimportar a planilha traz a base bruta, não o cadastro curado.
+- **O cadastro curado mora em `seeds/cadastros.json`, versionado.** `.cache/pgdata` está no
+  .gitignore, então catálogo de SKU, mapa SKU→produto e roteiros só sobrevivem a um banco
+  perdido se estiverem no seed. Depois de mexer nos cadastros, exporte:
+
+  ```bash
+  node scripts/exportar_cadastros.mjs              # banco -> seeds/cadastros.json
+  node scripts/carregar_cadastros.mjs              # seeds/cadastros.json -> banco vazio
+  ```
+
+  Tudo é chaveado por **nome de produto**, não por id — as sequences reiniciam num banco novo.
+  `produto_alias`, `sku_produto.so_no_codigo_morto` e `produto.ativo` não têm rota de escrita:
+  o carregador imprime o SQL desses no fim em vez de restaurar pela metade em silêncio.
 - **Editar um handler já vale sem reiniciar** o dev server: ele chama
   `loadRoutes(app, { recarregar: true })` e o arquivo do handler é relido a cada request. **Rota
   nova** (arquivo novo em `api/_handlers/`) continua exigindo restart — a varredura do diretório é
@@ -213,6 +226,23 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-08-31 — **O cadastro curado virou seed versionado** (`seeds/cadastros.json`), depois de o
+  usuário enxugar a Base de PROD à mão: 200 SKU → 26, 70 mapeamentos → 1, zero pendências.
+  - **O problema:** esse trabalho é manual, não sai de lugar nenhum automaticamente, e morava só
+    em `.cache/pgdata` — gitignored e já perdido uma vez (2026-08-20). Reimportar a planilha
+    traria a base bruta de volta, não a curadoria.
+  - **Chaveado por nome de produto, nunca por id.** Num banco recriado as sequences reiniciam;
+    `produto.nome` é UNIQUE e é o que casa as duas pontas. `criarProduto` devolve 409 com o id
+    de quem ocupou o nome, e é esse id que o carregador usa — daí produto não duplicar.
+  - **Round-trip provado** contra um PGlite em memória com as migrations e as rotas reais, sem
+    encostar no datadir de dev: produtos, processos, sku e mapeamentos voltaram idênticos
+    (19/89/26/1). O carregador recusa banco que já tem processo, porque `POST /api/roteiros`
+    sempre insere e rodar duas vezes duplicaria o roteiro; `--forcar` passa por cima.
+  - **Três colunas não têm rota de escrita** e por isso não voltam sozinhas: `produto_alias`,
+    `sku_produto.so_no_codigo_morto` e `produto.ativo`. O carregador imprime o SQL delas no fim.
+    Hoje é 1 alias ("Smart Trac Ultra Gen 2 ", com o espaço). Some quando as rotas existirem.
+  - Fora do escopo de propósito: cenário, calendário, lista de demanda e alocação (derivados,
+    se regeram destes) e `feriado`, que já tem `cadastrar_feriados.mjs`.
 - 2026-08-31 — **O heat map de operadores é a única exceção ao "fiel por padrão"** (decisão do
   usuário, depois da tela aparecer vazia). `api/_handlers/alocacao.js` força
   `alocacao-dia-anterior: true` no `calcular()`, mesclado por cima de `cenario.correcoes`.
