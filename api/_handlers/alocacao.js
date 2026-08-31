@@ -10,6 +10,8 @@ const { parametrosDoCenario } = require('../_lib/cenario');
  *
  * GET  /api/alocacao?cenario=N              -> matriz dia × operador gravada
  * POST /api/alocacao?cenario=N&acao=calcular -> recalcula a partir da lista de demanda
+ *
+ * Exceção deliberada à fidelidade: `alocacao-dia-anterior` é forçado aqui, veja `calcular()`.
  */
 async function handler(req, res) {
   if (!exigirAuth(req, res)) return;
@@ -89,14 +91,22 @@ async function calcular(cenarioId, res) {
     })),
     qtdOperadores,
     parametros,
-    correcoes: cenario.correcoes || {},
+    // Única exceção ao "fiel por padrão" do projeto, e é o que mantém a tela de pé: em modo
+    // fiel o empacotador só grava quando detecta troca de dia e não faz flush no fim, então o
+    // último dia do período NUNCA é gravado e a primeira gravação é uma linha-fantasma com
+    // data nula. Num cenário com um único dia de demanda isso zera o heat map inteiro — a
+    // tela ficava vazia mesmo com a lista de demanda cheia, e sem UI para ligar a correção
+    // (AGENTS.md 2026-08-17) não havia saída pelo produto. As demais correções do cenário
+    // continuam valendo como estão; o motor e os dois testes (fiel/corrigido) seguem intactos.
+    correcoes: { ...(cenario.correcoes || {}), 'alocacao-dia-anterior': true },
   });
 
   const gravadas = await transacao(async (c) => {
     await c.query('DELETE FROM alocacao_operador WHERE cenario_id = $1', [cenarioId]);
     let n = 0;
     for (const dia of alocacao) {
-      // Em modo fiel a primeira gravação vem com data nula (é a linha vazia da planilha).
+      // Guarda mantida: com a correção ligada o motor não emite dia sem data, mas gravar uma
+      // linha com data nula estouraria o NOT NULL da tabela em vez de dar um erro legível.
       if (!dia.data) continue;
       for (const [i, horas] of dia.horas.entries()) {
         await c.query(

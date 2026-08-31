@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  CalendarCheck, CalendarRange, ClipboardList, Database, Download, GitCompare, Globe,
+  CalendarCheck, CalendarRange, ClipboardList, Database, GitCompare, Globe,
   Home, LayoutGrid, ListTree, Moon, Sun, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -15,7 +15,6 @@ const SECOES: Secao[] = [
     itens: [
       { para: '/inicio', rotulo: 'Início', Icone: Home },
       { para: '/semanal', rotulo: 'Semanal', Icone: LayoutGrid },
-      { para: '/dimensionamento-global', rotulo: 'Dimensionamento Global', Icone: Globe },
     ],
   },
   {
@@ -38,7 +37,7 @@ const SECOES: Secao[] = [
     titulo: 'Plataforma',
     itens: [
       { para: '/cenarios', rotulo: 'Cenários', Icone: GitCompare },
-      { para: '/importar', rotulo: 'Importação', Icone: Download },
+      { para: '/dimensionamento-global', rotulo: 'Dimensionamento Global', Icone: Globe },
     ],
   },
 ]

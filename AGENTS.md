@@ -80,13 +80,17 @@ src/                 React 18 + TS + Vite + Tailwind
 **O app é fiel à planilha por padrão.** Cada divergência conhecida está registrada em
 `api/_lib/motor/desvios.js` (13 hoje) com: o que a planilha faz, o impacto medido e o que muda se
 for corrigida. O motor continua devolvendo `{ resultado, diagnosticos }` em toda rota; o que saiu
-foi a UI: o painel *Diagnóstico* das telas foi removido (ver §8) e só o catálogo em `/importar`
+foi a UI: o painel *Diagnóstico* das telas foi removido (ver §8) e o catálogo em `/importar` saiu
+da sidebar em 2026-08-31 — a rota e a página continuam de pé, sem link. Hoje **nenhuma tela**
 mostra as divergências.
 
 Regras:
 
 1. **Nenhum desvio muda de default sozinho.** Ligar a correção é ação do usuário — hoje, sem
-   switch na tela, isso significa que todo cenário roda fiel à planilha.
+   switch na tela, isso significa que todo cenário roda fiel à planilha. **Uma exceção, e só
+   uma:** `api/_handlers/alocacao.js` força `alocacao-dia-anterior` no heat map de operadores,
+   porque em fiel a tela ficava vazia e não havia como ligar a correção pelo produto (ver §8,
+   2026-08-31). Se for criar outra exceção, registre aqui — a lista tem que caber numa linha.
 2. A escolha fica em `cenario.correcoes` (jsonb) — então dois cenários podem ter políticas
    diferentes e ser comparados lado a lado. É esse o "modo comparação".
 3. Um id de desvio desconhecido em `correcoes` **falha alto** (`validarCorrecoes`), para um typo
@@ -209,6 +213,27 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-08-31 — **O heat map de operadores é a única exceção ao "fiel por padrão"** (decisão do
+  usuário, depois da tela aparecer vazia). `api/_handlers/alocacao.js` força
+  `alocacao-dia-anterior: true` no `calcular()`, mesclado por cima de `cenario.correcoes`.
+  - **Sintoma:** Execução → Operadores em branco ("Nenhuma alocação") com a lista de demanda
+    cheia. `POST /api/alocacao?cenario=167&acao=calcular` devolvia `gravadas: 0`,
+    `diasSemData: 1`.
+  - **Causa:** em modo fiel o motor só grava o acumulado ao detectar troca de dia e não faz flush
+    no fim (`alocacao.js:117`), então o último dia do período nunca é gravado e a primeira
+    gravação é a linha-fantasma com `data = null`, que o handler descarta. Num cenário cuja
+    demanda cabe em **um único dia** — o Setembro/2026 de teste, 2 linhas em 31/08 — isso zera
+    100% do heat map. Não é específico do dataset: em fiel a tela sempre perdia o último dia.
+  - **Por que forçar em vez de ligar a correção no cenário:** sem UI para alternar (decisão de
+    2026-08-17, abaixo) e com a Importação fora da sidebar, não havia caminho pelo produto —
+    só `PATCH /api/cenarios?id=N` na mão, repetido a cada cenário novo.
+  - **Escopo:** só o handler. `desvios.js` intacto, o desvio segue no catálogo, `alocacao.js` do
+    motor e os dois testes (fiel/corrigido) inalterados, as demais `correcoes` do cenário
+    continuam valendo. As outras telas seguem fiéis. Verificado: cenário 167 passou a gravar
+    8 células (8 op × 6,25 h = 50 h), que é exatamente a homem-hora que a Simulação ideal mostra.
+  - **Não mexido** (o usuário escolheu "só o cálculo"): o empty state de `Operadores.tsx` ainda dá
+    o conselho errado ("gere a demanda no calendário") quando não há alocação por outro motivo, e
+    o botão Recalcular continua descartando `gravadas`/`diasSemData`/`diagnosticos` da resposta.
 - 2026-08-25 — **A tela Dimensionamento Global voltou, alimentada por um forecast e SEM cenário**
   (pedida pelo usuário). Ela responde a pergunta do horizonte longo — headcount mês a mês até
   o fim do forecast (hoje 09/2026 a 12/2027) — e é a **única tela que não é escopada por

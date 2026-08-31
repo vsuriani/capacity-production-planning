@@ -93,7 +93,7 @@ export function Planejamento() {
           <h1 className="page-title">Cenário semanal</h1>
           <p className="page-subtitle nao-imprime">
             Meta e demanda por semana do mês. A fórmula é a da planilha, mas o headcount é o
-            ROUNDUP do cálculo — o catálogo das divergências está em Importação.
+            ROUNDUP do cálculo.
           </p>
           {/* No papel o título não basta: o relatório precisa dizer de qual cenário é e de quando. */}
           <p className="so-impressao page-subtitle">

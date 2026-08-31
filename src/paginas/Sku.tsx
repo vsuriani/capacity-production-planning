@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Copy, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { apiDelete, apiPatch, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
 import { fmtInt } from '../lib/formato'
@@ -8,7 +8,9 @@ import { Carregando, CelulaTexto, Erro, Kpi } from '../components/comuns'
 type Escopo = 'producao' | 'industrializacao'
 
 type Dados = {
-  itens: { codigo: string; descricao: string; grupo_item: string | null; ncm: string | null; ativo: boolean }[]
+  // `grupo_item` e `ncm` continuam na rota e no banco (vêm da planilha, 136 dos 200 itens têm
+  // valor), mas a tela não os mostra nem edita — não alimentam nenhum cálculo.
+  itens: { codigo: string; descricao: string; ativo: boolean }[]
   total: number
   mapeamentos: {
     sku_codigo: string
@@ -30,8 +32,6 @@ const ROTULO_ESCOPO: Record<Escopo, string> = {
 const NOVO_VAZIO = {
   codigo: '',
   descricao: '',
-  grupoItem: '',
-  ncm: '',
   produtoId: '',
   escopo: 'producao' as Escopo,
 }
@@ -97,8 +97,6 @@ export function Sku() {
       await apiPost('sku', {
         codigo: novo.codigo,
         descricao: novo.descricao,
-        grupoItem: novo.grupoItem,
-        ncm: novo.ncm,
         produtoId: novo.produtoId ? Number(novo.produtoId) : null,
         escopo: novo.escopo,
       })
@@ -177,26 +175,6 @@ export function Sku() {
             </label>
 
             <label className="block">
-              <span className="label-overline">Grupo</span>
-              <input
-                className="input-field w-40"
-                placeholder="—"
-                value={novo.grupoItem}
-                onChange={(e) => setNovo({ ...novo, grupoItem: e.target.value })}
-              />
-            </label>
-
-            <label className="block">
-              <span className="label-overline">NCM</span>
-              <input
-                className="input-field w-32 data-code"
-                placeholder="—"
-                value={novo.ncm}
-                onChange={(e) => setNovo({ ...novo, ncm: e.target.value })}
-              />
-            </label>
-
-            <label className="block">
               <span className="label-overline">Produto mapeado</span>
               <select
                 className="input-field w-56"
@@ -257,77 +235,6 @@ export function Sku() {
             />
           </div>
 
-          {dados.pendencias.length > 0 && (
-            <section className="panel border-amber-200 overflow-hidden">
-              <header className="px-4 py-3 border-b border-amber-200 bg-amber-50 flex items-center gap-2">
-                <AlertTriangle size={15} className="text-amber-700" />
-                <h2 className="font-heading font-semibold text-sm text-amber-900">
-                  SKU na grade que não geram demanda
-                </h2>
-              </header>
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th className="th">SKU</th>
-                    <th className="th">Bloco</th>
-                    <th className="th text-right">Qtd na grade</th>
-                    <th className="th">Motivo</th>
-                    <th className="th">Mapear para</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dados.pendencias.map((p) => (
-                    <tr key={`${p.sku_codigo}-${p.bloco}`} className="hover:bg-slate-50/60">
-                      <td className="td data-code">{p.sku_codigo}</td>
-                      <td className="td">
-                        <span className="chip">{p.bloco}</span>
-                      </td>
-                      <td className="td-num">{fmtInt(p.quantidade)}</td>
-                      <td className="td text-slate-600">{p.motivo}</td>
-                      <td className="td">
-                        <select
-                          className="input-field w-56 py-1"
-                          defaultValue=""
-                          onChange={(e) => {
-                            if (!e.target.value) return
-                            mapear(
-                              p.sku_codigo,
-                              Number(e.target.value),
-                              p.bloco === 'industrializacao' ? 'industrializacao' : 'producao',
-                            )
-                          }}
-                        >
-                          <option value="">escolher produto…</option>
-                          {produtos.map((pr) => (
-                            <option key={pr.id} value={pr.id}>
-                              {pr.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          )}
-
-          {dados.ambiguos.length > 0 && (
-            <section className="panel border-amber-200 px-4 py-3">
-              <div className="flex items-start gap-2 text-sm text-amber-900">
-                <Copy size={15} className="mt-0.5 shrink-0" />
-                <p>
-                  <strong>{dados.ambiguos.length} SKU mapeado(s) para mais de um produto.</strong>{' '}
-                  Em modo fiel isso gera as linhas dos dois roteiros, como na planilha:{' '}
-                  {dados.ambiguos
-                    .map((a) => `${a.sku_codigo} (${a.produtos.join(' + ')})`)
-                    .join(' · ')}
-                  .
-                </p>
-              </div>
-            </section>
-          )}
-
           <section className="panel overflow-hidden">
             <header className="px-4 py-3 border-b border-slate-200">
               <h2 className="font-heading font-semibold text-sm">
@@ -340,8 +247,6 @@ export function Sku() {
                   <tr>
                     <th className="th">Código</th>
                     <th className="th">Descrição</th>
-                    <th className="th">Grupo</th>
-                    <th className="th">NCM</th>
                     <th className="th">Produto mapeado</th>
                     <th className="th" />
                   </tr>
@@ -361,21 +266,6 @@ export function Sku() {
                           valor={s.descricao}
                           placeholder="sem descrição"
                           onConfirmar={(v) => salvar(s.codigo, { descricao: v })}
-                        />
-                      </td>
-                      <td className="td p-0 min-w-32">
-                        <CelulaTexto
-                          valor={s.grupo_item}
-                          placeholder="—"
-                          onConfirmar={(v) => salvar(s.codigo, { grupoItem: v })}
-                        />
-                      </td>
-                      <td className="td p-0 min-w-28">
-                        <CelulaTexto
-                          valor={s.ncm}
-                          placeholder="—"
-                          className="data-code"
-                          onConfirmar={(v) => salvar(s.codigo, { ncm: v })}
                         />
                       </td>
                       <td className="td">
