@@ -1,5 +1,5 @@
 {
-  "gerado_em": "2026-08-31T22:14:01.470Z",
+  "gerado_em": "2026-08-31T22:42:29.276Z",
   "origem": "http://localhost:3101",
   "produtos": [
     {
@@ -49,8 +49,10 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "87.5000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "ITCS-0023"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Energy Trac EE",
@@ -61,8 +63,10 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "10.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0176"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Omni Receiver",
@@ -73,8 +77,11 @@
       "leadtime_dias": 1,
       "operadores": "2.000",
       "pcs_hora": "7.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0127",
+        "PROD-0172"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Omni Trac",
@@ -85,8 +92,10 @@
       "leadtime_dias": 1,
       "operadores": "2.000",
       "pcs_hora": "7.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0158"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -97,8 +106,8 @@
       "leadtime_dias": 5,
       "operadores": "3.000",
       "pcs_hora": "25.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -109,8 +118,8 @@
       "leadtime_dias": 3,
       "operadores": "3.000",
       "pcs_hora": "28.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -121,8 +130,8 @@
       "leadtime_dias": 2,
       "operadores": "2.000",
       "pcs_hora": "40.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -133,8 +142,8 @@
       "leadtime_dias": 5,
       "operadores": "3.000",
       "pcs_hora": "38.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -145,8 +154,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "92.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -157,8 +166,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "150.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -169,8 +178,8 @@
       "leadtime_dias": 3,
       "operadores": "1.000",
       "pcs_hora": "40.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -181,8 +190,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "50.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -193,8 +202,12 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "12.5000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0048",
+        "PROD-0050",
+        "PROD-0071"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra G2",
@@ -205,8 +218,8 @@
       "leadtime_dias": 2,
       "operadores": "1.000",
       "pcs_hora": "20.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Receiver Ultra G2",
@@ -217,8 +230,11 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "20.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0151",
+        "PROD-0173"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Trac Ultra Ex Gen 2",
@@ -229,8 +245,11 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "84.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0164",
+        "PROD-0165"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Smart Trac Ultra Gen 2",
@@ -241,8 +260,11 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "63.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0153",
+        "PROD-0183"
+      ],
+      "origem_total_dia": "taxa"
     },
     {
       "produto": "Uniform",
@@ -253,8 +275,10 @@
       "leadtime_dias": 1,
       "operadores": "3.000",
       "pcs_hora": "15.0000",
-      "origem_total_dia": "taxa",
-      "skus_filho": []
+      "skus_filho": [
+        "PROD-0177"
+      ],
+      "origem_total_dia": "taxa"
     }
   ],
   "sku": [
@@ -420,6 +444,13 @@
       "ativo": true
     },
     {
+      "codigo": "PROD-0173",
+      "descricao": "Smart Receiver Ultra gen. 2 US/MX",
+      "grupo_item": null,
+      "ncm": null,
+      "ativo": true
+    },
+    {
       "codigo": "PROD-0176",
       "descricao": "Energy Trac EE - PCBA 1.2.1 Version",
       "grupo_item": null,
@@ -441,7 +472,98 @@
       "ativo": true
     }
   ],
-  "mapeamentos": [],
+  "mapeamentos": [
+    {
+      "sku_codigo": "ITCS-0023",
+      "produto": "Bateria EX Gen2",
+      "escopo": "industrializacao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0048",
+      "produto": "Smart Receiver Ultra",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0050",
+      "produto": "Smart Receiver Ultra",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0071",
+      "produto": "Smart Receiver Ultra",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0127",
+      "produto": "Omni Receiver",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0151",
+      "produto": "Smart Receiver Ultra G2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0153",
+      "produto": "Smart Trac Ultra Gen 2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0158",
+      "produto": "Omni Trac",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0164",
+      "produto": "Smart Trac Ultra Ex Gen 2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0165",
+      "produto": "Smart Trac Ultra Ex Gen 2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0172",
+      "produto": "Omni Receiver",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0173",
+      "produto": "Smart Receiver Ultra G2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0176",
+      "produto": "Energy Trac EE",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0177",
+      "produto": "Uniform",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    },
+    {
+      "sku_codigo": "PROD-0183",
+      "produto": "Smart Trac Ultra Gen 2",
+      "escopo": "producao",
+      "so_no_codigo_morto": false
+    }
+  ],
   "aliases": [
     {
       "produto": "Smart Trac Ultra Gen 2",
