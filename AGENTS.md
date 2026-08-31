@@ -65,7 +65,7 @@ src/                 React 18 + TS + Vite + Tailwind
 | `forecast` | o forecast externo por Country/Model e o mapa Model→dispositivo |
 | `dimensionamento` | a grade do Dimensionamento Global (sem cenário): ler, editar, carregar tempos |
 | `roteiros` | processos e sequências (Base simplificada); `?acao=produto` cadastra produto |
-| `sku` | catálogo Base de PROD + mapa SKU→produto + pendências |
+| `sku` | catálogo Base de PROD (CRUD, com renomear código) + mapa SKU→produto + pendências |
 | `projecao` | grade do calendário e geração da demanda |
 | `demandas` | lista de demanda editável + exportação CSV |
 | `alocacao` | heat map de operadores |
@@ -145,7 +145,10 @@ Gotchas do dev:
   `process.exitCode`.
 - **Não mate o dev server com `Stop-Process -Force`**: o datadir do pglite não sobrevive e o
   próximo boot falha em `_pg_initdb`. Use Ctrl+C. Se corromper: `rm -rf .cache/pgdata` e reimporte.
-- Rotas novas só aparecem depois de reiniciar o dev server (o roteamento é lido no boot).
+- **Editar um handler já vale sem reiniciar** o dev server: ele chama
+  `loadRoutes(app, { recarregar: true })` e o arquivo do handler é relido a cada request. **Rota
+  nova** (arquivo novo em `api/_handlers/`) continua exigindo restart — a varredura do diretório é
+  no boot. `server.cjs` não liga a recarga: em produção o handler é carregado uma vez.
 
 ---
 
@@ -171,6 +174,20 @@ tela tem variante `dark:`**: ao criar UI nova, use os primitivos ou as utilities
 bridge; se precisar de uma cor nova, adicione o token e a linha no bridge.
 
 O escuro é **escolhido**, não um flip automático: são passos próprios das mesmas rampas de marca.
+
+### Impressão / PDF
+
+Não há gerador de PDF: o relatório é a **própria tela** impressa pelo navegador, o que mantém o
+cluster air-gapped e o bundle sem uma biblioteca a mais. O bloco `@media print` no fim do
+`index.css` define A4 paisagem, some com o menu e solta o scroll da grade. Duas classes fazem a
+ponte: **`.nao-imprime`** (some no papel — botões, seletor, textos de ajuda) e
+**`.so-impressao`** (só aparece nele — o cabeçalho que identifica cenário e data de emissão).
+Quem chama `window.print()` força `data-theme=light` e restaura no `afterprint`.
+
+Duas armadilhas já pagas, ao imprimir uma grade: `break-inside: avoid` no `.panel` empurra a
+tabela inteira para a página seguinte em vez de deixá-la quebrar, e `<tfoot>` **repete em toda
+página** por padrão — as duas coisas somavam uma folha a mais. Por isso `tfoot` vira
+`table-row-group` e só o `tr`/`.kpi-card` levam `break-inside: avoid`.
 
 **Heat map** (`src/paginas/Operadores.tsx`): ocupação é magnitude → rampa sequencial de um único
 matiz (Blue), com lightness monotônica verificada nos dois temas — claro vai de claro a escuro
@@ -503,6 +520,40 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   `ordem`/`ativo`/`meta_padrao` de quem já existe: isso é do cadastro, não da planilha.
   O cadastro de **produtos** não foi renomeado — em Processos e sequências o roteiro segue em
   "OEE Trac" (e o produto "UniTrac 2.0" já existia lá, sem espaço).
+  **Efeito nos cenários existentes**: a migration preenche meta e termo dos cenários criados no
+  app, com duas travas — `NOT importado` (as 23 baselines da planilha ficam intactas) e
+  `meta_min_peca = 0` (meta digitada à mão é preservada).
+- 2026-08-31 — **A Base de PROD virou cadastro completo** (pedido do usuário: botão de novo código
+  e toda coluna editável). Mesmo caminho de *Processos e sequências*, só que aqui a rota precisou
+  crescer: entraram `POST /api/sku` (cria, com mapeamento opcional junto), `DELETE /api/sku?codigo=`
+  e o **renomear** dentro do `PATCH`.
+  Decisões:
+  - **O código é normalizado** (`trim` + maiúsculas) na criação e no rename. Ele casa por
+    igualdade exata em `explosao.js` e na grade, então um "prod-0199" digitado em minúscula
+    nunca encontraria nada — e o `busca` já usa `lower()`, então nada se perde.
+  - **Renomear é INSERT + repontar + DELETE**, numa transação, não `UPDATE` da chave:
+    `processo.sku_filho` tem FK para `sku(codigo)` e barraria o update. As outras três tabelas
+    (`sku_produto`, `projecao_slot`, `demanda_processo`) guardam o código como **texto solto, sem
+    FK** — é por isso que a lista de referências vive explícita em `REFERENCIAS` no handler, e
+    quem mexer no schema tem de mexer nela também.
+  - **Remover recusa enquanto alguém apontar** para o código (409 dizendo onde), em vez de
+    apagar em cascata: as três tabelas sem FK ficariam com código órfão em silêncio. Desfazer o
+    vínculo é pelos chips da própria linha.
+  - O `PATCH` **deixou de usar `COALESCE`** e monta o `SET` só com o que veio no corpo — mesmo
+    motivo da rota de demandas: sem isso não dava para limpar grupo e NCM de propósito.
+  `scripts/verificar_api.mjs` roda o ciclo inteiro (criar → normalizar → 409 de repetido → limpar
+  campos → renomear levando o mapeamento junto → 409 ao remover em uso → remover) e termina com o
+  catálogo de volta em **199**, que é o número que o resto do script afere.
+  **O que a feature revelou**: o botão respondeu *"Método não permitido"* na tela enquanto os
+  testes passavam — o `loadRoutes` fazia `require` do handler **uma vez, no boot**, então o
+  dev-server de pé ainda tinha o `sku.js` antigo, que 405 em `POST` sem `acao=mapear`. A gotcha
+  documentada só falava de *rota nova*; método novo em rota existente tem o mesmo efeito. Como o
+  processo do PGlite **não pode ser morto à força**, reiniciar é o gesto mais caro do dev aqui —
+  então `loadRoutes` ganhou a opção `recarregar`, que **só o dev-server liga**, e que relê o
+  arquivo do handler a cada request. Sai do `require.cache` **só a entrada do próprio handler**:
+  as dependências continuam o mesmo módulo, o que preserva a troca de `_lib/db.js` que o
+  dev-server faz por cache — e com ela o PGlite aberto. `server.cjs` não passa a opção, então o
+  caminho de produção não mudou.
 - 2026-08-27 — **Produto se cadastra na tela de Processos e sequências** (`POST
   /api/roteiros?acao=produto`, botão "Novo produto"). Produto é a unidade de roteiro e um
   cadastro global — nenhum cenário o copia —, então criar um basta para ele valer em todo
@@ -513,9 +564,17 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
   O grupo vazio some sob filtro de tipo de linha (esse filtro é sobre processos) e respeita a
   busca por texto pelo próprio nome. O contador virou "N processo(s) em M produto(s) · K sem
   roteiro"; os 3 órfãos que já existiam pararam de ficar escondidos.
-  **Efeito nos cenários existentes**: a migration preenche meta e termo dos cenários criados no
-  app, com duas travas — `NOT importado` (as 23 baselines da planilha ficam intactas) e
-  `meta_min_peca = 0` (meta digitada à mão é preservada).
+- 2026-08-27 — **Relatório em PDF do Cenário semanal, pela impressão do navegador.** Botão "PDF"
+  → `window.print()` + o bloco `@media print` do `index.css` (as regras e as armadilhas estão no
+  §6). Descartadas uma lib no bundle (~300 kB, e o layout do relatório viraria uma segunda coisa
+  para manter) e a geração no servidor (exigiria Chrome headless na imagem). Sai em A4 paisagem,
+  2 páginas, com cabeçalho de cenário e data de emissão.
+  Junto: o KPI **"Períodos sem dias úteis" virou "Hora/Homem mês"** = carga total ÷
+  `OPERADORES_DA_LINHA` (`src/lib/escopo.ts`, hoje **9**). O divisor é a **capacidade instalada**,
+  constante, e não o "Pico de operadores" do card ao lado — o pico é o que a demanda exigiu e
+  varia a cada cenário. Trocar o tamanho da equipe é editar essa constante, como o `MES_EM_USO`.
+  O aviso do card removido não sumiu: período sem dia útil virou o detalhe em âmbar do card
+  "Períodos", e cada período afetado segue marcado como `#DIV/0!` no rodapé da grade.
 
 ---
 

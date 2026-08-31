@@ -90,7 +90,10 @@ async function main() {
   const { loadRoutes } = require('./_lib/routes.js');
   const app = express();
   app.use('/api', express.json({ limit: '15mb' }));
-  const rotas = loadRoutes(app);
+  // `recarregar`: o handler é relido a cada request, então editar uma rota vale sem reiniciar
+  // este processo — que é justamente o que não se pode matar à força (o datadir do PGlite não
+  // sobrevive). Só as dependências ficam em cache, inclusive a troca do banco feita acima.
+  const rotas = loadRoutes(app, { recarregar: true });
 
   app.listen(PORTA, () => {
     console.log(`[dev] autenticado como ${process.env.DEV_FAKE_EMAIL} (sem gateway no local)`);

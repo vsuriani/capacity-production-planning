@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Copy, Trash2 } from 'lucide-react'
-import { apiDelete, apiPost } from '../lib/api'
+import { AlertTriangle, Copy, Plus, Trash2 } from 'lucide-react'
+import { apiDelete, apiPatch, apiPost } from '../lib/api'
 import { useApi } from '../lib/hooks'
 import { fmtInt } from '../lib/formato'
-import { Carregando, Erro, Kpi } from '../components/comuns'
+import { Carregando, CelulaTexto, Erro, Kpi } from '../components/comuns'
+
+type Escopo = 'producao' | 'industrializacao'
 
 type Dados = {
   itens: { codigo: string; descricao: string; grupo_item: string | null; ncm: string | null; ativo: boolean }[]
@@ -12,7 +14,7 @@ type Dados = {
     sku_codigo: string
     produto_id: number
     produto: string
-    escopo: 'producao' | 'industrializacao'
+    escopo: Escopo
     so_no_codigo_morto: boolean
     processos: number
   }[]
@@ -20,7 +22,27 @@ type Dados = {
   ambiguos: { sku_codigo: string; escopo: string; produtos: string[] }[]
 }
 
-/** Base de PROD: catálogo de SKU e o mapa SKU → produto que a explosão usa. */
+const ROTULO_ESCOPO: Record<Escopo, string> = {
+  producao: 'Produção',
+  industrializacao: 'Industrialização',
+}
+
+const NOVO_VAZIO = {
+  codigo: '',
+  descricao: '',
+  grupoItem: '',
+  ncm: '',
+  produtoId: '',
+  escopo: 'producao' as Escopo,
+}
+
+/**
+ * Base de PROD: catálogo de SKU e o mapa SKU → produto que a explosão usa.
+ *
+ * É cadastro de verdade — o código se cria aqui e toda coluna é editável, inclusive o próprio
+ * código (a rota renomeia repontando grade, demanda, mapa e produto filho). Remover só é
+ * possível enquanto ninguém aponta para ele; o vínculo se desfaz pelos chips.
+ */
 export function Sku() {
   const [busca, setBusca] = useState('')
   const { dados, erro, carregando, recarregar } = useApi<Dados>(
@@ -28,6 +50,10 @@ export function Sku() {
   )
   const { dados: roteiros } = useApi<{ produtos: { id: number; nome: string }[] }>('roteiros')
   const [erroAcao, setErroAcao] = useState<string | null>(null)
+  const [criando, setCriando] = useState(false)
+  const [novo, setNovo] = useState(NOVO_VAZIO)
+
+  const produtos = useMemo(() => roteiros?.produtos ?? [], [roteiros])
 
   const mapaPorSku = useMemo(() => {
     const mapa = new Map<string, Dados['mapeamentos']>()
@@ -38,26 +64,51 @@ export function Sku() {
     return mapa
   }, [dados])
 
-  async function mapear(skuCodigo: string, produtoId: number, escopo: string) {
+  async function agir(fn: () => Promise<unknown>) {
     setErroAcao(null)
     try {
-      await apiPost('sku?acao=mapear', { skuCodigo, produtoId, escopo })
+      await fn()
       recarregar()
     } catch (e) {
       setErroAcao((e as Error).message)
     }
   }
 
-  async function desmapear(skuCodigo: string, produtoId: number, escopo: string) {
-    setErroAcao(null)
-    try {
-      await apiDelete(
+  const salvar = (codigo: string, mudancas: Record<string, unknown>) =>
+    agir(() => apiPatch(`sku?codigo=${encodeURIComponent(codigo)}`, mudancas))
+
+  const mapear = (skuCodigo: string, produtoId: number, escopo: Escopo) =>
+    agir(() => apiPost('sku?acao=mapear', { skuCodigo, produtoId, escopo }))
+
+  const desmapear = (skuCodigo: string, produtoId: number, escopo: Escopo) =>
+    agir(() =>
+      apiDelete(
         `sku?acao=mapear&skuCodigo=${encodeURIComponent(skuCodigo)}&produtoId=${produtoId}&escopo=${escopo}`,
-      )
-      recarregar()
-    } catch (e) {
-      setErroAcao((e as Error).message)
+      ),
+    )
+
+  /** O formulário fica aberto e só o código é limpo — cadastrar item costuma vir em lote. */
+  async function criar() {
+    if (!novo.codigo.trim()) {
+      setErroAcao('Dê um código ao item.')
+      return
     }
+    await agir(async () => {
+      await apiPost('sku', {
+        codigo: novo.codigo,
+        descricao: novo.descricao,
+        grupoItem: novo.grupoItem,
+        ncm: novo.ncm,
+        produtoId: novo.produtoId ? Number(novo.produtoId) : null,
+        escopo: novo.escopo,
+      })
+      setNovo({ ...novo, codigo: '', descricao: '' })
+    })
+  }
+
+  async function remover(codigo: string) {
+    if (!confirm(`Remover o código ${codigo} do catálogo?`)) return
+    await agir(() => apiDelete(`sku?codigo=${encodeURIComponent(codigo)}`))
   }
 
   return (
@@ -70,15 +121,118 @@ export function Sku() {
             roteiro a demanda de um código vai seguir.
           </p>
         </div>
-        <input
-          className="input-field w-72"
-          placeholder="buscar código ou descrição…"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            className="input-field w-72"
+            placeholder="buscar código ou descrição…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setErroAcao(null)
+              setNovo(NOVO_VAZIO)
+              setCriando(!criando)
+            }}
+          >
+            <Plus size={15} /> Novo código
+          </button>
+        </div>
       </div>
 
       <Erro mensagem={erro ?? erroAcao} />
+
+      {criando && (
+        <section className="panel px-4 py-4 mb-5">
+          <h2 className="font-heading font-semibold text-sm mb-1">Novo código</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Só o código é obrigatório — o resto pode ser preenchido depois, direto na tabela. Ele
+            é a chave do catálogo e casa por igualdade exata com a grade do calendário, então é
+            gravado sem espaços e em maiúsculas. Sem produto mapeado, a demanda do código não
+            gera linha nenhuma.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="label-overline">Código</span>
+              <input
+                className="input-field w-40 data-code"
+                placeholder="ex.: PROD-0199"
+                value={novo.codigo}
+                onChange={(e) => setNovo({ ...novo, codigo: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && criar()}
+              />
+            </label>
+
+            <label className="block flex-1 min-w-64">
+              <span className="label-overline">Descrição</span>
+              <input
+                className="input-field"
+                placeholder="descrição do item no SAP"
+                value={novo.descricao}
+                onChange={(e) => setNovo({ ...novo, descricao: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && criar()}
+              />
+            </label>
+
+            <label className="block">
+              <span className="label-overline">Grupo</span>
+              <input
+                className="input-field w-40"
+                placeholder="—"
+                value={novo.grupoItem}
+                onChange={(e) => setNovo({ ...novo, grupoItem: e.target.value })}
+              />
+            </label>
+
+            <label className="block">
+              <span className="label-overline">NCM</span>
+              <input
+                className="input-field w-32 data-code"
+                placeholder="—"
+                value={novo.ncm}
+                onChange={(e) => setNovo({ ...novo, ncm: e.target.value })}
+              />
+            </label>
+
+            <label className="block">
+              <span className="label-overline">Produto mapeado</span>
+              <select
+                className="input-field w-56"
+                value={novo.produtoId}
+                onChange={(e) => setNovo({ ...novo, produtoId: e.target.value })}
+              >
+                <option value="">— nenhum —</option>
+                {produtos.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="label-overline">Escopo</span>
+              <select
+                className="input-field w-44"
+                value={novo.escopo}
+                onChange={(e) => setNovo({ ...novo, escopo: e.target.value as Escopo })}
+              >
+                <option value="producao">{ROTULO_ESCOPO.producao}</option>
+                <option value="industrializacao">{ROTULO_ESCOPO.industrializacao}</option>
+              </select>
+            </label>
+
+            <button className="btn-primary" onClick={criar}>
+              Criar código
+            </button>
+            <button className="btn-ghost" onClick={() => setCriando(false)}>
+              Fechar
+            </button>
+          </div>
+        </section>
+      )}
 
       {carregando && !dados ? (
         <Carregando />
@@ -144,7 +298,7 @@ export function Sku() {
                           }}
                         >
                           <option value="">escolher produto…</option>
-                          {(roteiros?.produtos ?? []).map((pr) => (
+                          {produtos.map((pr) => (
                             <option key={pr.id} value={pr.id}>
                               {pr.nome}
                             </option>
@@ -189,19 +343,43 @@ export function Sku() {
                     <th className="th">Grupo</th>
                     <th className="th">NCM</th>
                     <th className="th">Produto mapeado</th>
+                    <th className="th" />
                   </tr>
                 </thead>
                 <tbody>
                   {dados.itens.map((s) => (
                     <tr key={s.codigo} className="hover:bg-slate-50/60">
-                      <td className="td data-code">{s.codigo}</td>
-                      <td className="td max-w-md truncate" title={s.descricao}>
-                        {s.descricao || <span className="text-slate-400">sem descrição</span>}
+                      <td className="td p-0 min-w-36">
+                        <CelulaTexto
+                          valor={s.codigo}
+                          className="data-code"
+                          onConfirmar={(v) => v && salvar(s.codigo, { codigo: v })}
+                        />
                       </td>
-                      <td className="td text-slate-500 text-xs">{s.grupo_item ?? '—'}</td>
-                      <td className="td data-code text-xs">{s.ncm ?? '—'}</td>
+                      <td className="td p-0 min-w-80">
+                        <CelulaTexto
+                          valor={s.descricao}
+                          placeholder="sem descrição"
+                          onConfirmar={(v) => salvar(s.codigo, { descricao: v })}
+                        />
+                      </td>
+                      <td className="td p-0 min-w-32">
+                        <CelulaTexto
+                          valor={s.grupo_item}
+                          placeholder="—"
+                          onConfirmar={(v) => salvar(s.codigo, { grupoItem: v })}
+                        />
+                      </td>
+                      <td className="td p-0 min-w-28">
+                        <CelulaTexto
+                          valor={s.ncm}
+                          placeholder="—"
+                          className="data-code"
+                          onConfirmar={(v) => salvar(s.codigo, { ncm: v })}
+                        />
+                      </td>
                       <td className="td">
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
                           {(mapaPorSku.get(s.codigo) ?? []).map((m) => (
                             <span
                               key={`${m.produto_id}-${m.escopo}`}
@@ -221,16 +399,49 @@ export function Sku() {
                               </button>
                             </span>
                           ))}
-                          {!mapaPorSku.has(s.codigo) && (
-                            <span className="text-slate-400 text-xs">não mapeado</span>
-                          )}
+                          <select
+                            className="cell-input w-28 text-left text-xs"
+                            value=""
+                            title="Mapear para um produto"
+                            onChange={(e) => {
+                              if (!e.target.value) return
+                              const [id, escopo] = e.target.value.split('|')
+                              mapear(s.codigo, Number(id), escopo as Escopo)
+                            }}
+                          >
+                            <option value="">+ mapear…</option>
+                            {(['producao', 'industrializacao'] as Escopo[]).map((escopo) => (
+                              <optgroup key={escopo} label={ROTULO_ESCOPO[escopo]}>
+                                {produtos.map((p) => (
+                                  <option key={p.id} value={`${p.id}|${escopo}`}>
+                                    {p.nome}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
                         </div>
+                      </td>
+                      <td className="td text-right">
+                        <button
+                          className="text-slate-400 hover:text-red-600"
+                          onClick={() => remover(s.codigo)}
+                          title="Remover do catálogo"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <footer className="px-4 py-2 border-t border-slate-200 text-xs text-slate-500">
+              As células salvam ao sair do campo (Enter confirma, Esc desfaz). Trocar o código
+              renomeia o item e leva junto grade, lista de demanda, mapeamentos e os processos que
+              o usam como produto filho. Remover só vale enquanto ninguém apontar para ele —
+              desfaça os mapeamentos primeiro.
+            </footer>
           </section>
         </div>
       )}

@@ -266,6 +266,11 @@
     @apply panel p-10 text-center text-sm;
   }
 
+  /* Cabeçalho que só existe no papel: identifica o relatório fora da tela que o gerou. */
+  .so-impressao {
+    display: none;
+  }
+
   .skeleton {
     background-color: var(--app-surface-3);
     @apply animate-pulse rounded;
@@ -359,4 +364,91 @@
   /* O <pre> de comandos já é escuro no claro; no escuro ganha a superfície do tema. */
   [data-theme='dark'] .bg-slate-900 { background-color: var(--app-surface-3); }
   [data-theme='dark'] .text-slate-100 { color: var(--ink); }
+}
+
+/*
+ * Impressão — o PDF do app é a própria tela sem o cromo.
+ *
+ * Não há gerador de PDF aqui de propósito: o relatório sai pelo "Salvar como PDF" do diálogo do
+ * navegador, o que mantém o cluster air-gapped e o bundle sem uma biblioteca a mais. O custo é
+ * não controlar cabeçalho/rodapé de página — quem quiser tira os do navegador no próprio diálogo.
+ *
+ * Quem chama `window.print()` força `data-theme=light` antes e restaura no `afterprint`: papel é
+ * branco, e o tema escuro sairia como uma mancha de tinta.
+ *
+ * `.nao-imprime` some no papel; `.so-impressao` só aparece nele.
+ */
+@media print {
+  @page {
+    /* A grade tem uma coluna por semana mais Meta: retrato cortaria as últimas. */
+    size: A4 landscape;
+    margin: 12mm 10mm;
+  }
+
+  aside,
+  .nao-imprime {
+    display: none !important;
+  }
+  .so-impressao {
+    display: block !important;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+  main {
+    padding: 0 !important;
+  }
+
+  /* O que rola na tela não rola no papel. */
+  .impressao-solta {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .th {
+    position: static !important;
+  }
+  thead {
+    /* Repete o cabeçalho quando a grade passa de uma página. */
+    display: table-header-group;
+  }
+  tfoot {
+    /*
+     * O oposto: um <tfoot> repete no pé de TODA página, e o deste relatório tem 4 linhas
+     * (dias úteis, carga, fracionário, headcount). Repetido ele custava 132 px por página e
+     * estourava o relatório para uma 3ª folha — além de sugerir um total parcial que não existe.
+     * Como grupo de linhas comum ele sai uma vez só, no fim da grade.
+     */
+    display: table-row-group;
+  }
+  /*
+   * Só a linha e o card não se partem. O `.panel` da grade PRECISA se partir: proibi-lo empurra
+   * a tabela inteira para a página seguinte e ela transborda do mesmo jeito — foi o que fez o
+   * relatório sair com uma página a mais e um vazio no meio.
+   */
+  tr,
+  .kpi-card {
+    break-inside: avoid;
+  }
+  .panel,
+  .kpi-card {
+    box-shadow: none !important;
+  }
+
+  /* A célula editável é um <input>: no papel ela é só o número. */
+  .cell-input {
+    border-color: transparent !important;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /*
+   * Por padrão o navegador descarta cor de fundo ao imprimir. Aqui ela carrega significado — a
+   * faixa do cabeçalho separa as colunas, e o âmbar/vermelho marcam o que está fora do lugar.
+   */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

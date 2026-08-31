@@ -215,6 +215,62 @@ try {
   ok(`pendências na grade: ${sku.pendencias.map((p) => p.sku_codigo).join(', ')}`)
   conferir('SKU ambíguos', sku.ambiguos.length, 3)
 
+  // ------------------------------------------------------------ cadastro de SKU
+  // Ciclo completo do cadastro novo, terminando com o catálogo de volta em 199.
+  console.log('\ncadastro da Base de PROD')
+  await pedir('POST', 'sku', {
+    codigo: ' prod-teste ',
+    descricao: 'Item de teste',
+    grupoItem: 'TESTE',
+    ncm: '1234.56',
+    produtoId: novoProduto.id,
+  })
+  const comNovo = await pedir('GET', 'sku?busca=PROD-TESTE')
+  const item = comNovo.itens.find((i) => i.codigo === 'PROD-TESTE')
+  if (item) ok('código novo gravado sem espaços e em maiúsculas')
+  else falha(`código novo não apareceu: ${JSON.stringify(comNovo.itens)}`)
+  conferir('mapeamento criado junto', comNovo.mapeamentos.filter((m) => m.sku_codigo === 'PROD-TESTE').length, 1)
+
+  try {
+    await pedir('POST', 'sku', { codigo: 'PROD-TESTE' })
+    falha('código repetido devia dar 409')
+  } catch {
+    ok('código repetido é rejeitado')
+  }
+
+  // Sem COALESCE: grupo e NCM podem voltar a vazio de propósito.
+  await pedir('PATCH', 'sku?codigo=PROD-TESTE', { grupoItem: '', ncm: '', descricao: 'Item renomeado' })
+  const limpo = (await pedir('GET', 'sku?busca=PROD-TESTE')).itens[0]
+  if (limpo.grupo_item === null && limpo.ncm === null && limpo.descricao === 'Item renomeado') {
+    ok('PATCH limpa grupo/NCM e grava a descrição')
+  } else {
+    falha(`PATCH deixou ${JSON.stringify(limpo)}`)
+  }
+
+  // Renomear repõe a chave nas tabelas que a guardam como texto solto.
+  await pedir('PATCH', 'sku?codigo=PROD-TESTE', { codigo: 'PROD-TESTE-2' })
+  const renomeado = await pedir('GET', 'sku?busca=PROD-TESTE')
+  conferir('renomear não duplica', renomeado.itens.length, 1)
+  conferir(
+    'mapeamento acompanha o código renomeado',
+    renomeado.mapeamentos.filter((m) => m.sku_codigo === 'PROD-TESTE-2').length,
+    1,
+  )
+
+  try {
+    await pedir('DELETE', 'sku?codigo=PROD-TESTE-2')
+    falha('remover código mapeado devia dar 409')
+  } catch {
+    ok('código em uso não é removido')
+  }
+
+  await pedir(
+    'DELETE',
+    `sku?acao=mapear&skuCodigo=PROD-TESTE-2&produtoId=${novoProduto.id}&escopo=producao`,
+  )
+  await pedir('DELETE', 'sku?codigo=PROD-TESTE-2')
+  conferir('catálogo volta ao tamanho original', (await pedir('GET', 'sku')).total, 199)
+
   // ------------------------------------------------------------ calendário -> demanda
   console.log('\ncalendário e geração de demanda')
   const mensal = cenarios.find((c) => c.tipo === 'mensal' && c.mes === 7 && c.ano === 2026)

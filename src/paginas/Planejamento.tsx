@@ -1,11 +1,33 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GitCompare } from 'lucide-react'
+import { FileText, GitCompare } from 'lucide-react'
 import { apiPatch } from '../lib/api'
 import { useApi, useCenarioSelecionado } from '../lib/hooks'
+import { OPERADORES_DA_LINHA } from '../lib/escopo'
 import { fmtDecimal, fmtInt } from '../lib/formato'
 import type { DetalheCenario } from '../lib/tipos'
 import { Carregando, CelulaNumero, Erro, Kpi, SeletorCenario } from '../components/comuns'
+
+/**
+ * Abre o diálogo de impressão do navegador, que é de onde sai o PDF do relatório.
+ *
+ * Força o tema claro antes e devolve o anterior no `afterprint` — papel é branco, e a paleta
+ * escura sairia como uma mancha de tinta. O `afterprint` em vez de restaurar logo depois do
+ * `print()` porque nem todo navegador bloqueia a thread enquanto o diálogo está aberto.
+ *
+ * O que sai no papel é decidido pelo bloco `@media print` de `src/index.css`.
+ */
+function imprimir() {
+  const html = document.documentElement
+  const anterior = html.dataset.theme
+  const restaurar = () => {
+    if (anterior) html.dataset.theme = anterior
+    window.removeEventListener('afterprint', restaurar)
+  }
+  window.addEventListener('afterprint', restaurar)
+  html.dataset.theme = 'light'
+  window.print()
+}
 
 /**
  * Grade de planejamento semanal: uma linha por dispositivo (Meta + demanda por semana) e,
@@ -51,25 +73,38 @@ export function Planejamento() {
   const total = useMemo(() => {
     const rs = dados?.resultados ?? []
     const validos = rs.filter((r) => r.operadores !== null)
+    const horas = rs.reduce((s, r) => s + r.horasTotais, 0)
     return {
-      horas: rs.reduce((s, r) => s + r.horasTotais, 0),
+      horas,
       pico: validos.length ? Math.max(...validos.map((r) => r.operadores!)) : 0,
       periodosComErro: rs.filter((r) => r.erro).length,
+      // Quanto cada posto da linha absorve no mês se a carga for repartida pela equipe cheia.
+      // Divide pela capacidade instalada (constante), não pelo pico, que é o que a demanda pediu.
+      horaHomem: horas / OPERADORES_DA_LINHA,
     }
   }, [dados])
+
+  const emitidoEm = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Cenário semanal</h1>
-          <p className="page-subtitle">
+          <p className="page-subtitle nao-imprime">
             Meta e demanda por semana do mês. A fórmula é a da planilha, mas o headcount é o
             ROUNDUP do cálculo — o catálogo das divergências está em Importação.
           </p>
+          {/* No papel o título não basta: o relatório precisa dizer de qual cenário é e de quando. */}
+          <p className="so-impressao page-subtitle">
+            {dados?.cenario.nome ?? '—'} · emitido em {emitidoEm}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 nao-imprime">
           <SeletorCenario cenarios={cenarios} id={id} onSelecionar={setId} />
+          <button className="btn-ghost" onClick={imprimir} disabled={!dados}>
+            <FileText size={15} /> PDF
+          </button>
           <Link to="/cenarios" className="btn-ghost">
             <GitCompare size={15} /> Cenários
           </Link>
@@ -87,12 +122,25 @@ export function Planejamento() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi rotulo="Pico de operadores" valor={fmtInt(total.pico)} detalhe="maior período" />
             <Kpi rotulo="Carga total" valor={`${fmtDecimal(total.horas)} h`} detalhe="todos os períodos" />
-            <Kpi rotulo="Períodos" valor={fmtInt(dados.periodos.length)} />
+            {/*
+              O card "Períodos sem dias úteis" saiu, mas o aviso não: período sem dia útil é
+              #DIV/0! e some da conta, então ele desce para o detalhe daqui (e cada período
+              afetado continua marcado no rodapé da grade).
+            */}
             <Kpi
-              rotulo="Períodos sem dias úteis"
-              valor={fmtInt(total.periodosComErro)}
+              rotulo="Períodos"
+              valor={fmtInt(dados.periodos.length)}
               tom={total.periodosComErro > 0 ? 'alerta' : 'normal'}
-              detalhe={total.periodosComErro > 0 ? 'aparecem como #DIV/0! na planilha' : undefined}
+              detalhe={
+                total.periodosComErro > 0
+                  ? `${total.periodosComErro} sem dias úteis (#DIV/0!)`
+                  : undefined
+              }
+            />
+            <Kpi
+              rotulo="Hora/Homem mês"
+              valor={`${fmtDecimal(total.horaHomem)} h`}
+              detalhe={`carga ÷ ${OPERADORES_DA_LINHA} operadores`}
             />
           </div>
 
@@ -101,7 +149,7 @@ export function Planejamento() {
               <h2 className="font-heading font-semibold text-sm">Demanda e headcount</h2>
             </header>
 
-            <div className="overflow-auto max-h-[70vh]">
+            <div className="overflow-auto max-h-[70vh] impressao-solta">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
@@ -206,7 +254,7 @@ export function Planejamento() {
                 </tfoot>
               </table>
             </div>
-            <footer className="px-4 py-2 border-t border-slate-200 text-xs text-slate-500">
+            <footer className="px-4 py-2 border-t border-slate-200 text-xs text-slate-500 nao-imprime">
               A grade lista todo dispositivo ativo, mesmo o que ainda não tem meta, demanda ou
               roteiro cadastrado — ele aparece zerado e passa a contar assim que receber um
               número. Dispositivo fora de uso é escondido no cadastro e sai também da soma.
