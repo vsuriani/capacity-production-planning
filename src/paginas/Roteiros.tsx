@@ -46,8 +46,13 @@ const NOVO_VAZIO = {
  */
 export function Roteiros() {
   const { dados, erro, carregando, recarregar } = useApi<Dados>('roteiros')
-  // Produto filho tem FK para o catálogo: escolha fechada, nunca texto livre.
-  const { dados: catalogoSku } = useApi<{ itens: { codigo: string; descricao: string }[] }>('sku')
+  // Produto filho tem FK para o catálogo: escolha fechada, nunca texto livre. Os `mapeamentos`
+  // vêm de brinde na mesma resposta e são o que deixa o aviso de exclusão dizer quantos SKU
+  // perdem o vínculo, sem um request a mais.
+  const { dados: catalogoSku, recarregar: recarregarSku } = useApi<{
+    itens: { codigo: string; descricao: string }[]
+    mapeamentos: { produto_id: number }[]
+  }>('sku')
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
   const [filtro, setFiltro] = useState('')
   const [tipoFiltro, setTipoFiltro] = useState<TipoLinha | ''>('')
@@ -92,23 +97,27 @@ export function Roteiros() {
    * O grupo vazio some quando há filtro por tipo de linha: esse filtro é sobre processos, e um
    * produto sem processo não é resposta para "só defasagem". O filtro por texto ele respeita,
    * casando pelo próprio nome.
+   *
+   * O grupo carrega o `id` do produto porque o cabeçalho agora é cadastro — renomeia e remove.
+   * `id` nulo é o caso defensivo de um nome que só aparece em processo: sem id, o cabeçalho
+   * mostra o nome sem os controles em vez de chutar em qual produto mexer.
    */
   const porProduto = useMemo(() => {
     const termo = filtro.trim().toLowerCase()
-    const mapa = new Map<string, Processo[]>()
+    const mapa = new Map<string, { id: number | null; processos: Processo[] }>()
 
-    for (const p of dados?.produtos ?? []) mapa.set(p.nome, [])
+    for (const p of dados?.produtos ?? []) mapa.set(p.nome, { id: p.id, processos: [] })
     for (const p of visiveis) {
-      if (!mapa.has(p.produto)) mapa.set(p.produto, [])
-      mapa.get(p.produto)!.push(p)
+      if (!mapa.has(p.produto)) mapa.set(p.produto, { id: p.produto_id, processos: [] })
+      mapa.get(p.produto)!.processos.push(p)
     }
 
-    for (const [nome, lista] of mapa) {
-      if (!lista.length) {
+    for (const [nome, grupo] of mapa) {
+      if (!grupo.processos.length) {
         if (tipoFiltro || (termo && !nome.toLowerCase().includes(termo))) mapa.delete(nome)
         continue
       }
-      lista.sort(
+      grupo.processos.sort(
         (a, b) =>
           ORDEM_TIPO.indexOf(a.tipo_linha) - ORDEM_TIPO.indexOf(b.tipo_linha) ||
           (a.sequencia ?? 99) - (b.sequencia ?? 99),
@@ -118,9 +127,18 @@ export function Roteiros() {
   }, [dados, visiveis, filtro, tipoFiltro])
 
   const semRoteiro = useMemo(
-    () => [...porProduto.values()].filter((l) => l.length === 0).length,
+    () => [...porProduto.values()].filter((g) => g.processos.length === 0).length,
     [porProduto],
   )
+
+  /** Quantos SKU perdem o vínculo se o produto sair — o número que o confirm precisa dizer. */
+  const mapeamentosPorProduto = useMemo(() => {
+    const conta = new Map<number, number>()
+    for (const m of catalogoSku?.mapeamentos ?? []) {
+      conta.set(m.produto_id, (conta.get(m.produto_id) ?? 0) + 1)
+    }
+    return conta
+  }, [catalogoSku])
 
   /** Próximo degrau da sequência daquele produto + tipo de linha, que é o padrão do formulário. */
   const proximaSequencia = useMemo(() => {
@@ -208,6 +226,37 @@ export function Roteiros() {
   async function remover(id: number, nome: string) {
     if (!confirm(`Remover o processo "${nome}"?`)) return
     await agir(() => apiDelete(`roteiros?id=${id}`))
+  }
+
+  const renomearProduto = (id: number, nome: string) =>
+    agir(() => apiPatch(`roteiros?acao=produto&id=${id}`, { nome }))
+
+  /**
+   * Remover produto é a única ação destrutiva em cascata da tela: as FKs de processo,
+   * sku_produto e produto_alias são `ON DELETE CASCADE`, então o roteiro inteiro e os
+   * mapeamentos de SKU vão junto.
+   *
+   * As contagens saem do que já está carregado, só para escrever o aviso. Quem barra de
+   * verdade é a rota, que recusa com 409 sem o `cascata=1` — se a tela estiver com dado
+   * velho, a mensagem dela cai na barra de erro pelo `agir`.
+   */
+  async function removerProduto(id: number, nome: string, processos: number) {
+    const mapeamentos = mapeamentosPorProduto.get(id) ?? 0
+    const junto = [
+      processos > 0 && `${processos} processo(s) do roteiro`,
+      mapeamentos > 0 && `${mapeamentos} mapeamento(s) de SKU`,
+    ].filter(Boolean)
+
+    const aviso = junto.length
+      ? `Remover o produto "${nome}"?\n\nIsso apaga também ${junto.join(' e ')}. Não dá para desfazer.`
+      : `Remover o produto "${nome}"?`
+    if (!confirm(aviso)) return
+
+    await agir(async () => {
+      await apiDelete(`roteiros?acao=produto&id=${id}${junto.length ? '&cascata=1' : ''}`)
+      // O mapa SKU→produto mudou junto: sem isto o aviso do próximo produto sai com o número velho.
+      recarregarSku()
+    })
   }
 
   return (
@@ -425,33 +474,56 @@ export function Roteiros() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...porProduto.entries()].map(([produto, lista]) => (
+                  {[...porProduto.entries()].map(([produto, grupo]) => (
                     <Fragment key={produto}>
                       <tr className="bg-slate-50">
-                        <td className="td font-semibold" colSpan={11}>
-                          {produto}{' '}
-                          {lista.length > 0 ? (
-                            <span className="text-slate-500 font-normal">
-                              · {lista.length} processo(s)
-                            </span>
-                          ) : (
-                            <>
-                              <span className="chip-warn ml-1">sem roteiro</span>
-                              <button
-                                className="ml-3 font-normal text-primary-700 hover:underline"
-                                onClick={() =>
-                                  abrirCriacao(
-                                    dados.produtos.find((p) => p.nome === produto)?.id,
-                                  )
-                                }
-                              >
-                                lançar o primeiro processo
-                              </button>
-                            </>
+                        <td className="td font-semibold" colSpan={10}>
+                          <div className="flex items-center gap-1">
+                            {/* `.cell-input` é w-full: sem o wrapper de largura fixa ele
+                                esticaria a linha inteira do grupo. */}
+                            {grupo.id === null ? (
+                              <span className="px-2">{produto}</span>
+                            ) : (
+                              <span className="w-72 shrink-0">
+                                <CelulaTexto
+                                  valor={produto}
+                                  className="font-semibold"
+                                  onConfirmar={(v) => v && renomearProduto(grupo.id!, v)}
+                                />
+                              </span>
+                            )}
+                            {grupo.processos.length > 0 ? (
+                              <span className="text-slate-500 font-normal">
+                                · {grupo.processos.length} processo(s)
+                              </span>
+                            ) : (
+                              <>
+                                <span className="chip-warn ml-1">sem roteiro</span>
+                                <button
+                                  className="ml-3 font-normal text-primary-700 hover:underline"
+                                  onClick={() => abrirCriacao(grupo.id ?? undefined)}
+                                >
+                                  lançar o primeiro processo
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                        <td className="td text-right">
+                          {grupo.id !== null && (
+                            <button
+                              className="text-slate-400 hover:text-red-600"
+                              onClick={() =>
+                                removerProduto(grupo.id!, produto, grupo.processos.length)
+                              }
+                              title="Remover produto — leva o roteiro e os mapeamentos junto"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
                         </td>
                       </tr>
-                      {lista.map((p) => (
+                      {grupo.processos.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/60">
                           <td className="td p-0 min-w-64">
                             <CelulaTexto
@@ -541,7 +613,9 @@ export function Roteiros() {
               As células salvam ao sair do campo (Enter confirma, Esc desfaz). Trocar o produto
               move o processo de grupo. Total/dia é Pç/hr × 8 h: escrever nele grava o Pç/hr
               equivalente. Célula de Pç/hr em âmbar = sem taxa cadastrada, o que zera o tempo
-              estimado da demanda.
+              estimado da demanda. O <strong>nome do produto</strong> se edita no cabeçalho do
+              grupo; a lixeira dele remove o produto <strong>com o roteiro e os mapeamentos de
+              SKU junto</strong>, e isso não se desfaz.
             </footer>
           </section>
         </div>

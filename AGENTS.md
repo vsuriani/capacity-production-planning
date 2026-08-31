@@ -226,6 +226,34 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-08-31 — **Produto virou cadastro completo em Processos e sequências** (pedido do usuário):
+  renomear no cabeçalho do grupo e excluir pela lixeira. Antes só dava para criar — o `<select>`
+  de Produto na linha move o processo de grupo, não mexe no cadastro.
+  - **Renomear é um UPDATE e nada mais.** Nada referencia produto por texto: as três FKs
+    (`processo`, `sku_produto`, `produto_alias`) são por id, e `produto_alias` é escrito só pelo
+    importador e lido só pela listagem. É o oposto de renomear SKU, que é chave natural em quatro
+    tabelas e precisa do dança-de-três-passos de `sku.js:renomear`. **O nome antigo não vira
+    alias**: alias existe para absorver grafia divergente da planilha na importação, não para
+    guardar histórico de rename.
+  - **Excluir é cascata explícita** (decisão do usuário, escolhendo "cascata com aviso do
+    estrago"). As FKs são `ON DELETE CASCADE`, então apagar um produto leva o roteiro e os
+    mapeamentos SKU→produto junto — e mapeamento que some muda o que a explosão gera.
+    `DELETE ?acao=produto&id=N` **recusa com 409** listando o que está em uso, no padrão de
+    `sku.js:remover`; só apaga com `&cascata=1`. O flag tem de ser explícito para que um id
+    errado ou um retry não derrube um roteiro inteiro.
+  - **A tela conta o estrago com dado que já tinha.** `Roteiros.tsx` já pedia `GET /api/sku` para
+    as opções de produto filho, e a resposta traz `mapeamentos` — bastou alargar o tipo. O confirm
+    diz "isso apaga também N processo(s) do roteiro e M mapeamento(s) de SKU". A contagem do
+    cliente é só para redigir o aviso; quem barra é o 409.
+  - `porProduto` passou de `Map<nome, Processo[]>` para `Map<nome, {id, processos}>`, o que matou
+    o `dados.produtos.find(p => p.nome === produto)` que estava no meio do JSX.
+  - **Correção de arrasto:** `verificar_api.mjs` ainda exigia o diagnóstico `alocacao-dia-anterior`
+    na alocação, o que ficou falso quando o heat map passou a rodar corrigido (entrada abaixo). A
+    asserção foi invertida — agora prova que o diagnóstico **não** aparece e que `diasSemData` é 0.
+    O bloco do cadastro de SKU também deixou de mapear para o produto-fixture, que agora é apagado
+    em cascata pelo próprio teste de exclusão.
+  - `produto.ativo` **continua sem rota de escrita**, de propósito: ao contrário de
+    `dispositivo.ativo`, ele não é lido em lugar nenhum, então um toggle não filtraria nada.
 - 2026-08-31 — **O cadastro curado virou seed versionado** (`seeds/cadastros.json`), depois de o
   usuário enxugar a Base de PROD à mão: 200 SKU → 26, 70 mapeamentos → 1, zero pendências.
   - **O problema:** esse trabalho é manual, não sai de lugar nenhum automaticamente, e morava só

@@ -208,7 +208,57 @@ try {
     comProcesso.processos.filter((p) => p.produto_id === novoProduto.id).length,
     1,
   )
-  await pedir('DELETE', `roteiros?id=${processoNovo}`)
+
+  // --- renomear o produto ---------------------------------------------------
+  // Nada aponta para produto por texto (as três FKs são por id), então renomear é só um UPDATE:
+  // o processo tem de continuar atrelado, agora exibindo o nome novo.
+  await pedir('PATCH', `roteiros?acao=produto&id=${novoProduto.id}`, { nome: ' Produto Renomeado ' })
+  const produtoRenomeado = await pedir('GET', 'roteiros')
+  conferir(
+    'renomear apara e grava',
+    produtoRenomeado.produtos.find((p) => p.id === novoProduto.id)?.nome,
+    'Produto Renomeado',
+  )
+  conferir('não cria produto novo', produtoRenomeado.produtos.length, comProduto.produtos.length)
+  conferir(
+    'o processo segue no produto renomeado',
+    produtoRenomeado.processos.find((p) => p.id === processoNovo)?.produto,
+    'Produto Renomeado',
+  )
+  try {
+    // Colidir com um nome que já existe (o primeiro da lista, que não é este produto).
+    const outro = produtoRenomeado.produtos.find((p) => p.id !== novoProduto.id).nome
+    await pedir('PATCH', `roteiros?acao=produto&id=${novoProduto.id}`, { nome: outro })
+    falha('renomear para nome ocupado deveria dar 409')
+  } catch {
+    ok('renomear para nome ocupado é rejeitado')
+  }
+  try {
+    await pedir('PATCH', `roteiros?acao=produto&id=${novoProduto.id}`, { nome: '   ' })
+    falha('renomear para vazio deveria dar 400')
+  } catch {
+    ok('renomear para vazio é rejeitado')
+  }
+
+  // --- excluir o produto ----------------------------------------------------
+  // As FKs são ON DELETE CASCADE, então sem o flag a rota tem de recusar: apagar em silêncio o
+  // roteiro inteiro é exatamente o acidente que o 409 existe para evitar.
+  try {
+    await pedir('DELETE', `roteiros?acao=produto&id=${novoProduto.id}`)
+    falha('excluir produto com roteiro deveria dar 409 sem cascata')
+  } catch {
+    ok('excluir produto em uso é recusado sem cascata=1')
+  }
+  const aindaLa = await pedir('GET', 'roteiros')
+  conferir('e nada foi apagado', aindaLa.produtos.length, comProduto.produtos.length)
+  conferir('nem o processo', aindaLa.processos.length, comProcesso.processos.length)
+
+  // Com o flag, o produto sai e leva o roteiro junto — é também a limpeza do fixture.
+  const removido = await pedir('DELETE', `roteiros?acao=produto&id=${novoProduto.id}&cascata=1`)
+  conferir('a cascata reporta o processo removido', removido.removidos.processo, 1)
+  const semProduto = await pedir('GET', 'roteiros')
+  conferir('produto sai do cadastro', semProduto.produtos.length, roteiros.produtos.length)
+  conferir('e o processo vai junto', semProduto.processos.length, roteiros.processos.length)
 
   const sku = await pedir('GET', 'sku')
   conferir('total de SKU', sku.total, 199)
@@ -217,13 +267,17 @@ try {
 
   // ------------------------------------------------------------ cadastro de SKU
   // Ciclo completo do cadastro novo, terminando com o catálogo de volta em 199.
+  //
+  // Mapeia para um produto do próprio catálogo, e não para o fixture acima: aquele já foi
+  // apagado em cascata na verificação de exclusão.
   console.log('\ncadastro da Base de PROD')
+  const produtoParaMapear = roteiros.produtos[0].id
   await pedir('POST', 'sku', {
     codigo: ' prod-teste ',
     descricao: 'Item de teste',
     grupoItem: 'TESTE',
     ncm: '1234.56',
-    produtoId: novoProduto.id,
+    produtoId: produtoParaMapear,
   })
   const comNovo = await pedir('GET', 'sku?busca=PROD-TESTE')
   const item = comNovo.itens.find((i) => i.codigo === 'PROD-TESTE')
@@ -266,7 +320,7 @@ try {
 
   await pedir(
     'DELETE',
-    `sku?acao=mapear&skuCodigo=PROD-TESTE-2&produtoId=${novoProduto.id}&escopo=producao`,
+    `sku?acao=mapear&skuCodigo=PROD-TESTE-2&produtoId=${produtoParaMapear}&escopo=producao`,
   )
   await pedir('DELETE', 'sku?codigo=PROD-TESTE-2')
   conferir('catálogo volta ao tamanho original', (await pedir('GET', 'sku')).total, 199)
@@ -311,9 +365,12 @@ try {
   console.log('\nalocação de operadores')
   const calc = await pedir('POST', `alocacao?cenario=${mensal.id}&acao=calcular`)
   ok(`alocações gravadas: ${calc.gravadas} (dias sem data: ${calc.diasSemData})`)
+  // O heat map força `alocacao-dia-anterior` (única exceção ao "fiel por padrão", ver AGENTS §4),
+  // então o diagnóstico dele NÃO deve aparecer — e nenhum dia pode sair sem data.
   const diagAloc = calc.diagnosticos.map((d) => d.id)
-  if (!diagAloc.includes('alocacao-dia-anterior')) falha('esperava o diagnóstico do dia anterior')
+  if (diagAloc.includes('alocacao-dia-anterior')) falha('o heat map deveria rodar já corrigido')
   else ok(`diagnósticos da alocação: ${diagAloc.join(', ')}`)
+  conferir('nenhum dia sem data', calc.diasSemData, 0)
 
   const heat = await pedir('GET', `alocacao?cenario=${mensal.id}`)
   ok(`heat map: ${heat.dias.length} dias × ${heat.qtdOperadores} operadores, jornada ${heat.jornadaLiquida} h`)

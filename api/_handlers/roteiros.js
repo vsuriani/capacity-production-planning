@@ -6,11 +6,14 @@ const { query } = require('../_lib/db');
 /**
  * Processos e sequências (aba Base simplificada).
  *
- * GET    /api/roteiros                -> produtos + processos + pendências
- * POST   /api/roteiros                -> cria processo
- * POST   /api/roteiros?acao=produto   -> cria produto  { nome }
- * PATCH  /api/roteiros?id=N           -> altera processo
- * DELETE /api/roteiros?id=N
+ * GET    /api/roteiros                          -> produtos + processos + pendências
+ * POST   /api/roteiros                          -> cria processo
+ * POST   /api/roteiros?acao=produto             -> cria produto  { nome }
+ * PATCH  /api/roteiros?id=N                     -> altera processo
+ * PATCH  /api/roteiros?acao=produto&id=N        -> renomeia produto  { nome }
+ * DELETE /api/roteiros?id=N                     -> remove processo
+ * DELETE /api/roteiros?acao=produto&id=N        -> remove produto (recusa se em uso)
+ * DELETE /api/roteiros?acao=produto&id=N&cascata=1 -> remove produto + roteiro + mapeamentos
  */
 const CAMPOS = {
   produtoId: 'produto_id',
@@ -33,9 +36,12 @@ async function handler(req, res) {
   if (req.method === 'POST') {
     return req.query.acao === 'produto' ? criarProduto(req, res) : criar(req, res);
   }
-  if (req.method === 'PATCH') return atualizar(id, req, res);
+  if (req.method === 'PATCH') {
+    return req.query.acao === 'produto' ? renomearProduto(id, req, res) : atualizar(id, req, res);
+  }
   if (req.method === 'DELETE') {
     if (!id) return res.status(400).json({ erro: 'id obrigatório' });
+    if (req.query.acao === 'produto') return removerProduto(id, req, res);
     await query('DELETE FROM processo WHERE id = $1', [id]);
     return res.json({ ok: true });
   }
@@ -96,6 +102,94 @@ async function criarProduto(req, res) {
 
   const { rows } = await query('INSERT INTO produto (nome) VALUES ($1) RETURNING id, nome', [nome]);
   res.json(rows[0]);
+}
+
+/**
+ * Quem aponta para um produto. As três têm FK com `ON DELETE CASCADE`, então apagar o produto
+ * apaga tudo isto junto — contar antes é o que deixa a tela dizer o tamanho do estrago em vez
+ * de descobrir depois.
+ */
+const USO_DO_PRODUTO = [
+  { tabela: 'processo', rotulo: 'processo(s) no roteiro' },
+  { tabela: 'sku_produto', rotulo: 'mapeamento(s) de SKU' },
+  { tabela: 'produto_alias', rotulo: 'alias de nome' },
+];
+
+async function contarUsoDoProduto(id) {
+  const contagens = await Promise.all(
+    USO_DO_PRODUTO.map((r) =>
+      query(`SELECT count(*)::int AS n FROM ${r.tabela} WHERE produto_id = $1`, [id]),
+    ),
+  );
+  return USO_DO_PRODUTO.map((r, i) => ({ ...r, n: contagens[i].rows[0].n })).filter((r) => r.n > 0);
+}
+
+/**
+ * Renomeia o produto.
+ *
+ * Barato e seguro: **nada referencia produto por texto**. `produto_alias` é escrito só pelo
+ * importador e lido só pela listagem, e as três FKs são por id — então um UPDATE no nome basta,
+ * sem repontar ninguém (é o oposto de renomear um SKU, que é chave natural em quatro tabelas).
+ *
+ * O nome antigo não vira alias: alias existe para absorver grafia divergente da planilha na
+ * importação, não para guardar histórico de rename.
+ */
+async function renomearProduto(id, req, res) {
+  if (!id) return res.status(400).json({ erro: 'id obrigatório' });
+
+  const nome = String(req.body?.nome ?? '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome é obrigatório' });
+
+  const { rows: atual } = await query('SELECT nome FROM produto WHERE id = $1', [id]);
+  if (!atual[0]) return res.status(404).json({ erro: `Produto #${id} não existe.` });
+
+  // Mesma forma de `criarProduto`: o 409 devolve o id de quem ocupou, para a tela apontar o
+  // produto certo em vez de só reclamar.
+  const { rows: ocupado } = await query('SELECT id FROM produto WHERE nome = $1 AND id <> $2', [
+    nome,
+    id,
+  ]);
+  if (ocupado[0]) {
+    return res.status(409).json({ erro: `Já existe o produto "${nome}"`, id: ocupado[0].id });
+  }
+
+  const { rows } = await query(
+    'UPDATE produto SET nome = $2 WHERE id = $1 RETURNING id, nome',
+    [id, nome],
+  );
+  res.json(rows[0]);
+}
+
+/**
+ * Remove o produto. Sem `?cascata=1`, recusa enquanto alguém apontar para ele.
+ *
+ * O padrão é o de `sku.js`: recusar com a lista do que está em uso. A diferença é que aqui
+ * existe o caminho de forçar, porque exigir apagar 10 processos um a um antes de apagar o
+ * produto não é usável — e as FKs já sabem cascatear. O flag tem de ser explícito para que
+ * nenhum DELETE acidental (um id errado, um retry) leve um roteiro inteiro embora.
+ */
+async function removerProduto(id, req, res) {
+  const { rows: atual } = await query('SELECT nome FROM produto WHERE id = $1', [id]);
+  if (!atual[0]) return res.status(404).json({ erro: `Produto #${id} não existe.` });
+  const nome = atual[0].nome;
+
+  const emUso = await contarUsoDoProduto(id);
+  if (emUso.length && req.query.cascata !== '1') {
+    return res.status(409).json({
+      erro:
+        `O produto "${nome}" está em uso: ` +
+        emUso.map((r) => `${r.n} ${r.rotulo}`).join(', ') +
+        '. Remover leva tudo isso junto — repita com cascata=1 para confirmar.',
+      emUso,
+    });
+  }
+
+  // Contado antes do DELETE: depois da cascata não há o que contar.
+  const removidos = Object.fromEntries(USO_DO_PRODUTO.map((r) => [r.tabela, 0]));
+  for (const r of emUso) removidos[r.tabela] = r.n;
+
+  await query('DELETE FROM produto WHERE id = $1', [id]);
+  res.json({ ok: true, nome, removidos });
 }
 
 async function criar(req, res) {
