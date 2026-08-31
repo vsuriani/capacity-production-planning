@@ -73,7 +73,7 @@ const seed = {
     leadtime_dias: p.leadtime_dias,
     operadores: p.operadores,
     pcs_hora: p.pcs_hora,
-    sku_filho: p.sku_filho,
+    skus_filho: p.skus_filho ?? [],
     origem_total_dia: p.origem_total_dia,
   })),
   sku: sku.itens.map((s) => ({

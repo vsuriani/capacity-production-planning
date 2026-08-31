@@ -9,12 +9,17 @@ const fixtures = require('./fixtures.json');
 /**
  * Monta as estruturas do motor a partir das fixtures reais da planilha.
  * O nome do produto é usado como id (o motor trata ids como chave opaca).
+ *
+ * `fixtures.json` é captura da planilha, onde "Produto Filho" era uma célula só — por isso o
+ * arquivo continua com `skuFilho` singular e a conversão para a lista que o motor espera mora
+ * aqui. Regravar as fixtures só para plurizar um campo apagaria o que elas são: o retrato do
+ * dado de origem.
  */
 function mundoReal() {
   const processosPorProduto = new Map();
   for (const p of fixtures.roteiros) {
     if (!processosPorProduto.has(p.produto)) processosPorProduto.set(p.produto, []);
-    processosPorProduto.get(p.produto).push(p);
+    processosPorProduto.get(p.produto).push({ ...p, skusFilho: p.skuFilho ? [p.skuFilho] : [] });
   }
 
   const mapaSku = new Map();
@@ -73,16 +78,73 @@ test('tempo estimado é quantidade / Pç-hora e o lote sai da data de produção
   assert.equal(comTaxa.diaProducao, '2026-07-08');
 });
 
-test('industrialização só roda no processo cujo produto filho é o próprio SKU', () => {
+test('industrialização só roda no processo que tem o SKU entre os produtos filhos', () => {
   const { linhas } = explodir([
     { data: '2026-07-08', bloco: 'industrializacao', skuCodigo: 'ENCG-0018', quantidade: 1000 },
   ]);
 
+  assert.ok(linhas.length > 0, 'ENCG-0018 deveria casar com algum processo');
   for (const l of linhas) {
     assert.equal(l.tipoLinha, 'industrializacao');
     const processo = fixtures.roteiros.find((p) => p.id === l.processoId);
     assert.equal(processo.skuFilho, 'ENCG-0018');
   }
+});
+
+test('um processo com vários filhos roda para cada um deles', () => {
+  // O ganho da migration 007: antes isto exigia dois cadastros iguais, um por SKU.
+  const processo = {
+    id: 9001,
+    tipoLinha: 'industrializacao',
+    nome: 'Montar dois filhos',
+    sequencia: 1,
+    leadtimeDias: 0,
+    operadores: 2,
+    pcsHora: 10,
+    skusFilho: ['ITCS-0001', 'ITCS-0012'],
+  };
+  const mundo = {
+    processosPorProduto: new Map([['P', [processo]]]),
+    mapaSku: new Map([
+      ['ITCS-0001|industrializacao', ['P']],
+      ['ITCS-0012|industrializacao', ['P']],
+      ['ITCS-0023|industrializacao', ['P']],
+    ]),
+    nomesProduto: new Map([['P', 'P']]),
+  };
+  const slot = (sku) => ({
+    data: '2026-07-08',
+    bloco: 'industrializacao',
+    skuCodigo: sku,
+    quantidade: 100,
+  });
+
+  const { linhas } = explodirDemanda({
+    ...mundo,
+    slots: [slot('ITCS-0001'), slot('ITCS-0012'), slot('ITCS-0023')],
+  });
+
+  assert.deepEqual(
+    linhas.map((l) => l.skuCodigo),
+    ['ITCS-0001', 'ITCS-0012'],
+    'os dois filhos casam; o SKU de fora não',
+  );
+});
+
+test('processo sem filho nenhum nunca roda em industrialização', () => {
+  // Mesma semântica do antigo `sku_filho` nulo — a lista vazia não casa com nada.
+  const { linhas } = explodirDemanda({
+    processosPorProduto: new Map([
+      ['P', [{ id: 9002, tipoLinha: 'industrializacao', nome: 'Órfão', pcsHora: 10, skusFilho: [] }]],
+    ]),
+    mapaSku: new Map([['ITCS-0001|industrializacao', ['P']]]),
+    nomesProduto: new Map([['P', 'P']]),
+    slots: [
+      { data: '2026-07-08', bloco: 'industrializacao', skuCodigo: 'ITCS-0001', quantidade: 100 },
+    ],
+  });
+
+  assert.equal(linhas.length, 0);
 });
 
 // ---------------------------------------------------------------- desvios

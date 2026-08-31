@@ -226,6 +226,29 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-08-31 — **"Produto filho" aceita vários SKU** (pedido do usuário), migration
+  `007_produtos_filhos.sql`: a coluna `processo.sku_filho` virou a tabela `processo_sku_filho`
+  e a coluna foi **dropada** — duas fontes para o mesmo fato é como elas divergem.
+  - **A semântica muda de cardinalidade, não de natureza** (decisão do usuário, escolhendo
+    "rodar para qualquer um deles"). O campo é usado num lugar só, `explosao.js`: no bloco de
+    industrialização entram apenas os processos cujo produto filho é o SKU explodido. Passou de
+    `skuFilho === sku` para `skusFilho.includes(sku)`. Lista vazia nunca casa — é o mesmo que o
+    antigo nulo. **Nenhum número de linha gerada muda**; muda quantos processos casam. O ganho:
+    um processo que serve três SKU deixa de precisar de três cadastros iguais.
+  - **As fixtures não foram regravadas.** `fixtures.json` é retrato da planilha, onde "Produto
+    Filho" era uma célula só; ele mantém `skuFilho` singular e a conversão para lista mora no
+    `mundoReal()` do teste. Regravar o arquivo para plurizar um campo apagaria o que ele é.
+  - **A tela usa chips**, o mesmo gesto do mapa SKU→produto na Base de PROD: um chip por SKU com
+    × para desanexar, mais um `+ anexar…`. As rotas seguem o precedente de `sku?acao=mapear`:
+    `POST /api/roteiros?acao=filho` e `DELETE …?acao=filho&processoId=&skuCodigo=`. A PK é o par,
+    com `ON CONFLICT DO NOTHING` — anexar duas vezes o mesmo código não é erro.
+  - **`sku.js` precisou acompanhar:** `REFERENCIAS` trocou `processo.sku_filho` por
+    `processo_sku_filho.sku_codigo`, senão renomear um SKU deixaria de repontar o vínculo e
+    remover um SKU usado como produto filho deixaria de ser recusado. Coberto em
+    `verificar_api.mjs`.
+  - **Gotcha ao regerar o seed:** exportar de um banco *restaurado* perde os aliases, porque o
+    carregador não consegue recriá-los (sem rota de escrita). O `seeds/cadastros.json` foi
+    convertido a partir do arquivo real, não de um round-trip.
 - 2026-08-31 — **Produto virou cadastro completo em Processos e sequências** (pedido do usuário):
   renomear no cabeçalho do grupo e excluir pela lixeira. Antes só dava para criar — o `<select>`
   de Produto na linha move o processo de grupo, não mexe no cadastro.

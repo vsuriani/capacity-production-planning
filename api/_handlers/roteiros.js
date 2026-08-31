@@ -11,6 +11,8 @@ const { query } = require('../_lib/db');
  * POST   /api/roteiros?acao=produto             -> cria produto  { nome }
  * PATCH  /api/roteiros?id=N                     -> altera processo
  * PATCH  /api/roteiros?acao=produto&id=N        -> renomeia produto  { nome }
+ * POST   /api/roteiros?acao=filho               -> anexa produto filho { processoId, skuCodigo }
+ * DELETE /api/roteiros?acao=filho&processoId=N&skuCodigo=X -> desanexa
  * DELETE /api/roteiros?id=N                     -> remove processo
  * DELETE /api/roteiros?acao=produto&id=N        -> remove produto (recusa se em uso)
  * DELETE /api/roteiros?acao=produto&id=N&cascata=1 -> remove produto + roteiro + mapeamentos
@@ -24,9 +26,10 @@ const CAMPOS = {
   leadtimeDias: 'leadtime_dias',
   operadores: 'operadores',
   pcsHora: 'pcs_hora',
-  skuFilho: 'sku_filho',
   origemTotalDia: 'origem_total_dia',
 };
+// `skusFilho` não entra aqui: desde a migration 007 é uma tabela, não uma coluna. Anexa e
+// desanexa pelas ações `filho`, no mesmo espírito de `sku?acao=mapear`.
 
 async function handler(req, res) {
   if (!exigirAuth(req, res)) return;
@@ -34,12 +37,15 @@ async function handler(req, res) {
 
   if (req.method === 'GET') return listar(res);
   if (req.method === 'POST') {
-    return req.query.acao === 'produto' ? criarProduto(req, res) : criar(req, res);
+    if (req.query.acao === 'produto') return criarProduto(req, res);
+    if (req.query.acao === 'filho') return anexarFilho(req, res);
+    return criar(req, res);
   }
   if (req.method === 'PATCH') {
     return req.query.acao === 'produto' ? renomearProduto(id, req, res) : atualizar(id, req, res);
   }
   if (req.method === 'DELETE') {
+    if (req.query.acao === 'filho') return desanexarFilho(req, res);
     if (!id) return res.status(400).json({ erro: 'id obrigatório' });
     if (req.query.acao === 'produto') return removerProduto(id, req, res);
     await query('DELETE FROM processo WHERE id = $1', [id]);
@@ -52,10 +58,15 @@ async function listar(res) {
   const [produtos, processos, aliases, semRoteiro] = await Promise.all([
     query('SELECT id, nome, ativo FROM produto ORDER BY nome'),
     query(
+      // Os filhos vêm como array na própria linha: a tela desenha um chip por SKU, e um
+      // segundo request só para isso deixaria a lista e os chips fora de sincronia.
+      // `COALESCE(…, '{}')` para o processo sem filho nenhum chegar como [] e não como null.
       `SELECT p.id, p.produto_id, pr.nome AS produto, p.tipo_linha, p.nome, p.sequencia,
-              p.paralelismo, p.leadtime_dias, p.operadores, p.pcs_hora, p.sku_filho,
+              p.paralelismo, p.leadtime_dias, p.operadores, p.pcs_hora,
               p.origem_total_dia,
-              (p.pcs_hora IS NULL OR p.pcs_hora <= 0) AS sem_taxa
+              (p.pcs_hora IS NULL OR p.pcs_hora <= 0) AS sem_taxa,
+              COALESCE((SELECT array_agg(f.sku_codigo ORDER BY f.sku_codigo)
+                          FROM processo_sku_filho f WHERE f.processo_id = p.id), '{}') AS skus_filho
          FROM processo p
          JOIN produto pr ON pr.id = p.produto_id
         ORDER BY pr.nome, p.tipo_linha, p.sequencia NULLS LAST, p.id`,
@@ -199,15 +210,66 @@ async function criar(req, res) {
   }
   const { rows } = await query(
     `INSERT INTO processo (produto_id, tipo_linha, nome, sequencia, paralelismo,
-                           leadtime_dias, operadores, pcs_hora, sku_filho, origem_total_dia)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+                           leadtime_dias, operadores, pcs_hora, origem_total_dia)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
     [
       b.produtoId, b.tipoLinha, b.nome, b.sequencia ?? null, b.paralelismo ?? null,
-      b.leadtimeDias ?? 0, b.operadores ?? null, b.pcsHora ?? null, b.skuFilho || null,
+      b.leadtimeDias ?? 0, b.operadores ?? null, b.pcsHora ?? null,
       b.origemTotalDia || 'taxa',
     ],
   );
+
+  // Lista opcional no cadastro, para o seed conseguir recriar um processo inteiro num POST só.
+  // Pela tela os filhos são anexados depois, um chip por vez.
+  for (const sku of b.skusFilho ?? []) {
+    await query(
+      `INSERT INTO processo_sku_filho (processo_id, sku_codigo)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [rows[0].id, String(sku).trim()],
+    );
+  }
+
   res.json({ id: rows[0].id });
+}
+
+/**
+ * Anexa um SKU à lista de produtos filhos do processo.
+ *
+ * `ON CONFLICT DO NOTHING` porque a PK é o par: clicar duas vezes no mesmo SKU não é erro,
+ * é a mesma verdade. A FK para `sku(codigo)` é quem barra um código que não está na Base de
+ * PROD — traduzida aqui em 400, senão a tela mostraria "Erro interno".
+ */
+async function anexarFilho(req, res) {
+  const processoId = Number(req.body?.processoId);
+  const skuCodigo = String(req.body?.skuCodigo ?? '').trim();
+  if (!processoId || !skuCodigo) {
+    return res.status(400).json({ erro: 'processoId e skuCodigo são obrigatórios' });
+  }
+
+  const { rows } = await query('SELECT 1 FROM sku WHERE codigo = $1', [skuCodigo]);
+  if (!rows.length) {
+    return res.status(400).json({ erro: `O código ${skuCodigo} não está na Base de PROD.` });
+  }
+
+  await query(
+    `INSERT INTO processo_sku_filho (processo_id, sku_codigo)
+     VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [processoId, skuCodigo],
+  );
+  res.json({ ok: true });
+}
+
+async function desanexarFilho(req, res) {
+  const processoId = Number(req.query.processoId);
+  const skuCodigo = String(req.query.skuCodigo ?? '').trim();
+  if (!processoId || !skuCodigo) {
+    return res.status(400).json({ erro: 'processoId e skuCodigo são obrigatórios' });
+  }
+  await query('DELETE FROM processo_sku_filho WHERE processo_id = $1 AND sku_codigo = $2', [
+    processoId,
+    skuCodigo,
+  ]);
+  res.json({ ok: true });
 }
 
 async function atualizar(id, req, res) {

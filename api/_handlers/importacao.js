@@ -149,21 +149,21 @@ async function gravarProcessos(c, lista = [], produtos, avisos) {
       avisos.push({ tipo: 'processo-sem-produto', processo: p.nome, produto: p.produto });
       continue;
     }
-    // sku_filho tem FK para sku: só grava se o código existir no catálogo.
-    let skuFilho = p.skuFilho || null;
-    if (skuFilho) {
-      const { rows } = await c.query('SELECT 1 FROM sku WHERE codigo = $1', [skuFilho]);
-      if (!rows.length) {
-        avisos.push({ tipo: 'produto-filho-fora-da-base-prod', processo: p.nome, sku: skuFilho });
-        skuFilho = null;
-      }
+    // `processo_sku_filho` tem FK para sku: só grava o que existir no catálogo. A planilha traz
+    // um filho por processo (era uma célula só); a tabela aceita vários desde a migration 007.
+    const filhos = [];
+    for (const bruto of p.skusFilho ?? (p.skuFilho ? [p.skuFilho] : [])) {
+      const sku = String(bruto).trim();
+      const { rows } = await c.query('SELECT 1 FROM sku WHERE codigo = $1', [sku]);
+      if (rows.length) filhos.push(sku);
+      else avisos.push({ tipo: 'produto-filho-fora-da-base-prod', processo: p.nome, sku });
     }
 
-    await c.query(
+    const { rows: criado } = await c.query(
       `INSERT INTO processo
          (produto_id, tipo_linha, nome, sequencia, paralelismo, leadtime_dias,
-          operadores, pcs_hora, sku_filho, origem_total_dia, ordem_importacao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          operadores, pcs_hora, origem_total_dia, ordem_importacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [
         produtoId,
         p.tipoLinha,
@@ -173,11 +173,18 @@ async function gravarProcessos(c, lista = [], produtos, avisos) {
         p.leadtimeDias ?? 0,
         p.operadores ?? null,
         p.pcsHora ?? null,
-        skuFilho,
         p.origemTotalDia || 'taxa',
         p.ordem ?? null,
       ],
     );
+
+    for (const sku of filhos) {
+      await c.query(
+        `INSERT INTO processo_sku_filho (processo_id, sku_codigo)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [criado[0].id, sku],
+      );
+    }
     gravados++;
   }
   return gravados;

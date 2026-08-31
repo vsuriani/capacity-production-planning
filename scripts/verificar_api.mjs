@@ -209,6 +209,52 @@ try {
     1,
   )
 
+  // --- produtos filhos (migration 007) --------------------------------------
+  // A coluna virou tabela: o processo aceita 1 ou mais SKU, e a industrialização casa por
+  // pertencimento à lista.
+  const doProcesso = () =>
+    pedir('GET', 'roteiros').then(
+      (r) => r.processos.find((p) => p.id === processoNovo).skus_filho,
+    )
+  conferir('processo nasce sem filho', (await doProcesso()).length, 0)
+
+  await pedir('POST', 'roteiros?acao=filho', { processoId: processoNovo, skuCodigo: 'PROD-0114' })
+  await pedir('POST', 'roteiros?acao=filho', { processoId: processoNovo, skuCodigo: 'PROD-0113' })
+  conferir('dois filhos anexados', (await doProcesso()).join(','), 'PROD-0113,PROD-0114')
+
+  // A PK é o par: reanexar o mesmo código não duplica nem dá erro.
+  await pedir('POST', 'roteiros?acao=filho', { processoId: processoNovo, skuCodigo: 'PROD-0114' })
+  conferir('reanexar o mesmo SKU não duplica', (await doProcesso()).length, 2)
+
+  try {
+    await pedir('POST', 'roteiros?acao=filho', { processoId: processoNovo, skuCodigo: 'NAO-EXISTE' })
+    falha('SKU fora da Base de PROD deveria dar 400')
+  } catch {
+    ok('SKU fora do catálogo é rejeitado')
+  }
+
+  await pedir(
+    'DELETE',
+    `roteiros?acao=filho&processoId=${processoNovo}&skuCodigo=PROD-0114`,
+  )
+  conferir('desanexar tira só o escolhido', (await doProcesso()).join(','), 'PROD-0113')
+
+  // Um SKU que é produto filho não pode ser removido do catálogo enquanto o vínculo existir:
+  // é a FK de processo_sku_filho, e o guarda de sku.js tem de enxergá-la.
+  try {
+    await pedir('DELETE', 'sku?codigo=PROD-0113')
+    falha('remover SKU que é produto filho deveria dar 409')
+  } catch (e) {
+    if (String(e.message).includes('produto filho')) ok('SKU usado como produto filho é protegido')
+    else falha(`409 esperado por produto filho, veio: ${e.message}`)
+  }
+
+  await pedir(
+    'DELETE',
+    `roteiros?acao=filho&processoId=${processoNovo}&skuCodigo=PROD-0113`,
+  )
+  conferir('processo volta a zero filhos', (await doProcesso()).length, 0)
+
   // --- renomear o produto ---------------------------------------------------
   // Nada aponta para produto por texto (as três FKs são por id), então renomear é só um UPDATE:
   // o processo tem de continuar atrelado, agora exibindo o nome novo.

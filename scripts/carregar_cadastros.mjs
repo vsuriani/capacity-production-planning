@@ -79,8 +79,12 @@ const idOuFalha = (nome, onde) => {
 
 // ---------------------------------------------------------------- processos
 
+// Os produtos filhos ficam para depois do bloco de SKU: `processo_sku_filho` tem FK para
+// `sku(codigo)`, e neste ponto o catálogo ainda está vazio. Guarda o id de cada processo
+// criado para reencontrá-lo lá embaixo.
+const idDoProcesso = []
 for (const p of seed.processos) {
-  await pedir('POST', 'roteiros', {
+  const { dados } = await pedir('POST', 'roteiros', {
     produtoId: idOuFalha(p.produto, `processo "${p.nome}"`),
     tipoLinha: p.tipo_linha,
     nome: p.nome,
@@ -89,9 +93,9 @@ for (const p of seed.processos) {
     leadtimeDias: p.leadtime_dias,
     operadores: p.operadores,
     pcsHora: p.pcs_hora,
-    skuFilho: p.sku_filho,
     origemTotalDia: p.origem_total_dia,
   })
+  idDoProcesso.push(dados.id)
 }
 console.log(`  processos    ${seed.processos.length} criados`)
 
@@ -121,6 +125,18 @@ for (const m of seed.mapeamentos) {
   })
 }
 console.log(`  mapeamentos  ${seed.mapeamentos.length} aplicados`)
+
+// ---------------------------------------------------------------- produtos filhos
+
+// Agora que o catálogo existe, a FK de `processo_sku_filho` deixa anexar.
+let filhos = 0
+for (const [i, p] of seed.processos.entries()) {
+  for (const sku of p.skus_filho ?? []) {
+    await pedir('POST', 'roteiros?acao=filho', { processoId: idDoProcesso[i], skuCodigo: sku })
+    filhos++
+  }
+}
+console.log(`  filhos       ${filhos} anexados`)
 
 // ---------------------------------------------------------------- o que não volta
 

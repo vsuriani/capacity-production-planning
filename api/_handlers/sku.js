@@ -37,7 +37,7 @@ const textoOuNulo = (bruto) => {
 };
 
 /**
- * Onde o código aparece fora da tabela `sku`. Só `processo.sku_filho` tem FK; as outras
+ * Onde o código aparece fora da tabela `sku`. Só `processo_sku_filho` tem FK; as outras
  * três guardam o código como texto solto, então renomear e remover têm de olhar para elas
  * na mão.
  */
@@ -45,7 +45,11 @@ const REFERENCIAS = [
   { tabela: 'sku_produto', coluna: 'sku_codigo', rotulo: 'mapeamento(s) para produto' },
   { tabela: 'projecao_slot', coluna: 'sku_codigo', rotulo: 'linha(s) na grade do calendário' },
   { tabela: 'demanda_processo', coluna: 'sku_codigo', rotulo: 'linha(s) na lista de demanda' },
-  { tabela: 'processo', coluna: 'sku_filho', rotulo: 'processo(s) com ele como produto filho' },
+  {
+    tabela: 'processo_sku_filho',
+    coluna: 'sku_codigo',
+    rotulo: 'processo(s) com ele como produto filho',
+  },
 ];
 
 async function contarReferencias(codigo) {
@@ -220,7 +224,7 @@ async function atualizar(req, res) {
 
 /**
  * Renomear é criar o novo, repontar quem apontava e apagar o velho — nessa ordem, porque a FK
- * de `processo.sku_filho` barra o `UPDATE` direto da chave.
+ * de `processo_sku_filho.sku_codigo` barra o `UPDATE` direto da chave.
  */
 async function renomear(codigo, novo) {
   const ocupado = await query('SELECT 1 FROM sku WHERE codigo = $1', [novo]);

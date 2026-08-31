@@ -66,14 +66,13 @@ export function Roteiros() {
     [dados],
   )
 
+  /** Escolha fechada: produto filho tem FK para o catálogo, nunca é texto livre. */
   const opcoesSkuFilho = useMemo(
-    () => [
-      { valor: '', rotulo: '— nenhum —' },
-      ...(catalogoSku?.itens ?? []).map((s) => ({
+    () =>
+      (catalogoSku?.itens ?? []).map((s) => ({
         valor: s.codigo,
         rotulo: s.descricao ? `${s.codigo} — ${s.descricao}` : s.codigo,
       })),
-    ],
     [catalogoSku],
   )
 
@@ -85,7 +84,7 @@ export function Roteiros() {
         (!termo ||
           p.produto.toLowerCase().includes(termo) ||
           p.nome.toLowerCase().includes(termo) ||
-          (p.sku_filho ?? '').toLowerCase().includes(termo)),
+          p.skus_filho.some((f) => f.toLowerCase().includes(termo))),
     )
   }, [dados, filtro, tipoFiltro])
 
@@ -230,6 +229,18 @@ export function Roteiros() {
 
   const renomearProduto = (id: number, nome: string) =>
     agir(() => apiPatch(`roteiros?acao=produto&id=${id}`, { nome }))
+
+  // Um chip por SKU, anexado e desanexado um a um — mesmo gesto do mapa SKU→produto na Base
+  // de PROD. A rota faz ON CONFLICT DO NOTHING, então reanexar o mesmo código não é erro.
+  const anexarFilho = (processoId: number, skuCodigo: string) =>
+    agir(() => apiPost('roteiros?acao=filho', { processoId, skuCodigo }))
+
+  const desanexarFilho = (processoId: number, skuCodigo: string) =>
+    agir(() =>
+      apiDelete(
+        `roteiros?acao=filho&processoId=${processoId}&skuCodigo=${encodeURIComponent(skuCodigo)}`,
+      ),
+    )
 
   /**
    * Remover produto é a única ação destrutiva em cascata da tela: as FKs de processo,
@@ -585,13 +596,37 @@ export function Roteiros() {
                               onConfirmar={(v) => salvarTotalDia(p, v)}
                             />
                           </td>
-                          <td className="td p-0 min-w-40">
-                            <CelulaSelecao
-                              valor={p.sku_filho ?? ''}
-                              opcoes={opcoesSkuFilho}
-                              className="data-code"
-                              onConfirmar={(v) => salvar(p.id, { skuFilho: v || null })}
-                            />
+                          <td className="td min-w-56">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {p.skus_filho.map((sku) => (
+                                <span key={sku} className="chip data-code">
+                                  {sku}
+                                  <button
+                                    onClick={() => desanexarFilho(p.id, sku)}
+                                    className="ml-1 hover:text-red-700"
+                                    title="Desanexar produto filho"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                </span>
+                              ))}
+                              <select
+                                className="cell-input w-28 text-left text-xs"
+                                value=""
+                                title="Anexar um produto filho"
+                                onChange={(e) => {
+                                  if (!e.target.value) return
+                                  anexarFilho(p.id, e.target.value)
+                                }}
+                              >
+                                <option value="">+ anexar…</option>
+                                {opcoesSkuFilho.map((o) => (
+                                  <option key={o.valor} value={o.valor}>
+                                    {o.rotulo}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </td>
                           <td className="td text-right">
                             <button
@@ -615,7 +650,9 @@ export function Roteiros() {
               equivalente. Célula de Pç/hr em âmbar = sem taxa cadastrada, o que zera o tempo
               estimado da demanda. O <strong>nome do produto</strong> se edita no cabeçalho do
               grupo; a lixeira dele remove o produto <strong>com o roteiro e os mapeamentos de
-              SKU junto</strong>, e isso não se desfaz.
+              SKU junto</strong>, e isso não se desfaz. Produto filho aceita{' '}
+              <strong>mais de um SKU</strong>: cada chip é um código que este processo produz, e é
+              o que faz a industrialização daquele código rodar aqui.
             </footer>
           </section>
         </div>

@@ -21,6 +21,7 @@ const TIPOS_DA_PRODUCAO = ['defasagem', 'producao_montagem'];
  * @param {{data: string, bloco: string, skuCodigo: string, quantidade: number}[]} entrada.slots
  * @param {Map<string, number[]>} entrada.mapaSku       `${sku}|${escopo}` -> produtoIds
  * @param {Map<number, object[]>} entrada.processosPorProduto
+ *        Cada processo traz `skusFilho: string[]` — os SKU que ele produz (ver migration 007).
  * @param {Map<number, string>} entrada.nomesProduto
  * @param {Record<string, boolean>} [entrada.correcoes]
  * @param {Set<string>} [entrada.feriados]
@@ -66,9 +67,13 @@ function explodirDemanda({
       const doProduto = processosPorProduto.get(produtoId) ?? [];
       let processos = doProduto.filter((p) => tiposAceitos.includes(p.tipoLinha));
 
-      // A industrialização só roda para o processo cujo "Produto Filho" é o próprio SKU.
+      // A industrialização só roda nos processos que produzem este SKU. `skusFilho` é lista
+      // desde a migration 007: o processo casa quando o SKU está ENTRE os filhos, e não quando
+      // é igual a um único. Lista vazia nunca casa — é o mesmo que o antigo `sku_filho` nulo.
       if (escopo === 'industrializacao') {
-        processos = processos.filter((p) => String(p.skuFilho || '').trim() === sku);
+        processos = processos.filter((p) =>
+          (p.skusFilho ?? []).some((f) => String(f || '').trim() === sku),
+        );
       }
 
       if (processos.length === 0) {

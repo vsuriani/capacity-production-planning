@@ -111,7 +111,9 @@ async function gerar(cenarioId, req, res, email) {
     ),
     query(
       `SELECT p.id, p.produto_id, p.tipo_linha, p.nome, p.sequencia, p.leadtime_dias,
-              p.operadores, p.pcs_hora, p.sku_filho
+              p.operadores, p.pcs_hora,
+              COALESCE((SELECT array_agg(f.sku_codigo)
+                          FROM processo_sku_filho f WHERE f.processo_id = p.id), '{}') AS skus_filho
          FROM processo p ORDER BY p.produto_id, p.sequencia NULLS LAST, p.id`,
     ),
     query('SELECT sku_codigo, produto_id, escopo FROM sku_produto'),
@@ -129,7 +131,7 @@ async function gerar(cenarioId, req, res, email) {
       leadtimeDias: p.leadtime_dias,
       operadores: p.operadores === null ? null : Number(p.operadores),
       pcsHora: p.pcs_hora === null ? null : Number(p.pcs_hora),
-      skuFilho: p.sku_filho,
+      skusFilho: p.skus_filho ?? [],
     });
   }
 

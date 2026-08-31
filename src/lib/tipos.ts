@@ -173,7 +173,8 @@ export type Processo = {
   leadtime_dias: number
   operadores: string | null
   pcs_hora: string | null
-  sku_filho: string | null
+  /** SKU que o processo produz. Filtra a industrialização; vazio = nunca roda nela. */
+  skus_filho: string[]
   origem_total_dia: 'taxa' | 'total'
   sem_taxa: boolean
 }

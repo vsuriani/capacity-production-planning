@@ -49,8 +49,8 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "87.5000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Energy Trac EE",
@@ -61,8 +61,8 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "10.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Omni Receiver",
@@ -73,8 +73,8 @@
       "leadtime_dias": 1,
       "operadores": "2.000",
       "pcs_hora": "7.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Omni Trac",
@@ -85,8 +85,8 @@
       "leadtime_dias": 1,
       "operadores": "2.000",
       "pcs_hora": "7.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -97,8 +97,8 @@
       "leadtime_dias": 5,
       "operadores": "3.000",
       "pcs_hora": "25.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -109,8 +109,8 @@
       "leadtime_dias": 3,
       "operadores": "3.000",
       "pcs_hora": "28.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -121,8 +121,8 @@
       "leadtime_dias": 2,
       "operadores": "2.000",
       "pcs_hora": "40.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -133,8 +133,8 @@
       "leadtime_dias": 5,
       "operadores": "3.000",
       "pcs_hora": "38.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -145,8 +145,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "92.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -157,8 +157,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "150.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -169,8 +169,8 @@
       "leadtime_dias": 3,
       "operadores": "1.000",
       "pcs_hora": "40.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -181,8 +181,8 @@
       "leadtime_dias": 4,
       "operadores": "2.000",
       "pcs_hora": "50.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra",
@@ -193,8 +193,8 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "12.5000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra G2",
@@ -205,8 +205,8 @@
       "leadtime_dias": 2,
       "operadores": "1.000",
       "pcs_hora": "20.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Receiver Ultra G2",
@@ -217,8 +217,8 @@
       "leadtime_dias": 1,
       "operadores": "4.000",
       "pcs_hora": "20.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Trac Ultra Ex Gen 2",
@@ -229,8 +229,8 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "84.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Smart Trac Ultra Gen 2",
@@ -241,8 +241,8 @@
       "leadtime_dias": 1,
       "operadores": "6.000",
       "pcs_hora": "63.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     },
     {
       "produto": "Uniform",
@@ -253,8 +253,8 @@
       "leadtime_dias": 1,
       "operadores": "3.000",
       "pcs_hora": "15.0000",
-      "sku_filho": null,
-      "origem_total_dia": "taxa"
+      "origem_total_dia": "taxa",
+      "skus_filho": []
     }
   ],
   "sku": [
