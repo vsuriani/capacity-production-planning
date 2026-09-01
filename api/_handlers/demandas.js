@@ -3,6 +3,7 @@
 const { exigirAuth } = require('../_lib/auth');
 const { query } = require('../_lib/db');
 const { responderCsv } = require('../_lib/csv');
+const { inserirLinhaManual, faltandoNaLinhaManual } = require('../_lib/demanda');
 
 /**
  * Lista de demanda (aba Demandas Defasagem), editável.
@@ -86,28 +87,13 @@ async function listar(req, res) {
   res.json({ demandas: linhas, total });
 }
 
+/** Sem `diaIdeal`: a linha nasce no pool da Simulação, para o supervisor posicionar. */
 async function criar(req, res, email) {
-  const b = req.body || {};
-  if (!b.cenarioId || !b.diaProcesso || !b.diaProducao || !b.skuCodigo || !b.tipoLinha) {
-    return res
-      .status(400)
-      .json({ erro: 'cenarioId, tipoLinha, diaProcesso, diaProducao e skuCodigo são obrigatórios' });
-  }
+  const falta = faltandoNaLinhaManual(req.body);
+  if (falta) return res.status(400).json({ erro: falta });
 
-  const { rows } = await query(
-    `INSERT INTO demanda_processo
-       (cenario_id, tipo_linha, dia_processo, dia_producao, sku_codigo, processo_id,
-        processo_nome, quantidade, operadores, pcs_hora, tempo_horas, lote, origem,
-        atualizado_por)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'manual',$13)
-     RETURNING id`,
-    [
-      b.cenarioId, b.tipoLinha, b.diaProcesso, b.diaProducao, b.skuCodigo,
-      b.processoId ?? null, b.processoNome || '', b.quantidade ?? 0, b.operadores ?? null,
-      b.pcsHora ?? null, b.tempoHoras ?? null, b.lote || '', email,
-    ],
-  );
-  res.json({ id: rows[0].id });
+  const { id } = await inserirLinhaManual(req.body, email);
+  res.json({ id });
 }
 
 /** Campo do corpo -> coluna. O que não está aqui não é editável pela rota. */
@@ -146,11 +132,29 @@ async function atualizar(req, res, email) {
   }
   if (!sets.length) return res.json({ ok: true });
 
+  // `feito` e `status_realizado` são o mesmo fato dito de duas formas, e a regra que os mantém
+  // coerentes mora só aqui: feito <=> status = 'total'. Sem isto, marcar o check nesta tela
+  // deixaria o Planejado × Realizado dizendo "pendente" para uma linha concluída.
+  // Efeito aceito: destravar o check devolve a linha para pendente, apagando um parcial.
   if (b.feito === true) {
     valores.push(email);
-    sets.push(`feito_por = $${valores.length}`, 'feito_em = now()');
+    sets.push(
+      `feito_por = $${valores.length}`,
+      'feito_em = now()',
+      `status_realizado = 'total'`,
+      'quantidade_realizada = quantidade',
+      `apontado_por = $${valores.length}`,
+      'apontado_em = now()',
+    );
   } else if (b.feito === false) {
-    sets.push('feito_por = NULL', 'feito_em = NULL');
+    sets.push(
+      'feito_por = NULL',
+      'feito_em = NULL',
+      `status_realizado = 'pendente'`,
+      'quantidade_realizada = NULL',
+      'apontado_por = NULL',
+      'apontado_em = NULL',
+    );
   }
 
   valores.push(email);

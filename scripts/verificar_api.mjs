@@ -424,6 +424,106 @@ try {
     falha('CSV inválido')
   }
 
+  // ------------------------------------------------------------ Planejado × Realizado
+  //
+  // A tela só enxerga o que a Simulação alocou, então o `preencher` é o pré-requisito: sem
+  // dia_ideal, a listagem sai vazia por definição.
+  console.log('\nPlanejado × Realizado')
+  await pedir('POST', `simulacao?cenario=${mensal.id}&acao=preencher`)
+  const real0 = await pedir('GET', `realizado?cenario=${mensal.id}`)
+  conferir('lista o que a Simulação alocou', real0.linhas.length, total)
+  conferir('e nada apontado ainda', real0.indicadores.apontadas, 0)
+  // A fixture é de julho/2026, logo todo o plano já venceu: o pace parte de 0, não de "—".
+  // O null só aparece quando nada venceu ainda, e é o que a divisão por zero seria.
+  conferir('todo o plano da fixture já venceu', real0.indicadores.planejadoAteHoje, real0.indicadores.planejado)
+  conferir('e o pace parte de zero', real0.indicadores.aderencia, 0)
+
+  // O indicador é só montagem: tem de ser MENOS que o total de linhas alocadas.
+  const montagem = real0.linhas.filter((l) => l.tipo_linha === 'producao_montagem')
+  conferir('o indicador conta só montagem', real0.indicadores.linhas, montagem.length)
+  if (montagem.length < real0.linhas.length) ok(`e ignora as outras ${real0.linhas.length - montagem.length} linhas`)
+  else falha('esperava linhas fora da montagem para provar o recorte')
+
+  // total: copia o planejado, marca feito e aparece na Lista de demanda como concluída.
+  const alvo = montagem[0]
+  await pedir('PATCH', `realizado?id=${alvo.id}`, { status: 'total' })
+  const depoisTotal = await pedir('GET', `realizado?cenario=${mensal.id}`)
+  const linhaTotal = depoisTotal.linhas.find((l) => l.id === alvo.id)
+  conferir('total copia a quantidade planejada', Number(linhaTotal.quantidade_realizada), Number(alvo.quantidade))
+  const naLista = await pedir('GET', `demandas?cenario=${mensal.id}&feito=true`)
+  if (naLista.demandas.some((l) => l.id === alvo.id)) ok('e marca o check na Lista de demanda')
+  else falha('apontar total deveria marcar feito')
+
+  // parcial: exige número, e o número tem de caber no planejado.
+  const outro = montagem[1]
+  try {
+    await pedir('PATCH', `realizado?id=${outro.id}`, {
+      status: 'parcial',
+      quantidadeRealizada: Number(outro.quantidade) + 1,
+    })
+    falha('parcial acima do planejado deveria dar 400')
+  } catch {
+    ok('parcial acima do planejado é rejeitado')
+  }
+  await pedir('PATCH', `realizado?id=${outro.id}`, { status: 'parcial', quantidadeRealizada: 5 })
+
+  // cancelado zera, e a linha NÃO conta como feita.
+  const terceiro = montagem[2]
+  await pedir('PATCH', `realizado?id=${terceiro.id}`, { status: 'cancelado' })
+
+  const comApontamentos = await pedir('GET', `realizado?cenario=${mensal.id}`)
+  const i = comApontamentos.indicadores
+  conferir('cancelado zera o realizado', Number(comApontamentos.linhas.find((l) => l.id === terceiro.id).quantidade_realizada), 0)
+  conferir('três linhas apontadas', i.apontadas, 3)
+  conferir('uma cancelada', i.canceladas, 1)
+  conferir('realizado soma total + parcial', i.realizado, Number(alvo.quantidade) + 5)
+  if (i.planejado > i.realizado) ok(`planejado ${i.planejado} pç × realizado ${i.realizado} pç`)
+  else falha('planejado deveria ser maior que o realizado aqui')
+
+  // Linha manual criada aqui nasce ALOCADA — senão sumiria da própria tela.
+  const { id: manualReal } = await pedir('POST', `realizado?cenario=${mensal.id}`, {
+    tipoLinha: 'producao_montagem',
+    diaProcesso: '2026-07-08',
+    diaProducao: '2026-07-08',
+    skuCodigo: 'PROD-0114',
+    processoNome: 'Montagem extra',
+    quantidade: 30,
+  })
+  const comManual = await pedir('GET', `realizado?cenario=${mensal.id}`)
+  const nova = comManual.linhas.find((l) => l.id === manualReal)
+  if (nova && nova.dia_ideal === '2026-07-08') ok('linha manual nasce alocada e aparece na tela')
+  else falha(`linha manual não veio alocada: ${JSON.stringify(nova)}`)
+
+  // Demanda gerada não se apaga por aqui.
+  try {
+    await pedir('DELETE', `realizado?id=${alvo.id}`)
+    falha('remover linha gerada deveria dar 409')
+  } catch {
+    ok('linha gerada não é removível aqui')
+  }
+  await pedir('DELETE', `realizado?id=${manualReal}`)
+
+  // O log guarda tudo que passou por esta aba, inclusive da linha que já não existe.
+  const comLog = await pedir('GET', `realizado?cenario=${mensal.id}`)
+  // 3 apontamentos + 1 criação + 1 remoção. O parcial recusado com 400 não deixa rastro, e é
+  // isso mesmo: o log é de mudanças, não de tentativas.
+  const acoes = comLog.log.map((e) => e.acao)
+  conferir('eventos registrados', comLog.log.length, 5)
+  if (acoes.includes('apontou') && acoes.includes('criou-linha') && acoes.includes('removeu-linha')) {
+    ok(`log com as três ações: ${[...new Set(acoes)].join(', ')}`)
+  } else {
+    falha(`log incompleto: ${acoes.join(', ')}`)
+  }
+  const eventoDaRemocao = comLog.log.find((e) => e.acao === 'removeu-linha')
+  if (eventoDaRemocao.processo_nome === 'Montagem extra') ok('o evento sobrevive à exclusão da linha')
+  else falha(`contexto perdido no log: ${JSON.stringify(eventoDaRemocao)}`)
+
+  // Deixa o cenário como estava, para os blocos seguintes não herdarem apontamento.
+  for (const l of [alvo, outro, terceiro]) {
+    await pedir('PATCH', `realizado?id=${l.id}`, { status: 'pendente' })
+  }
+  await pedir('POST', `simulacao?cenario=${mensal.id}&acao=esvaziar`)
+
   // ------------------------------------------------------------ alocação
   console.log('\nalocação de operadores')
   const calc = await pedir('POST', `alocacao?cenario=${mensal.id}&acao=calcular`)

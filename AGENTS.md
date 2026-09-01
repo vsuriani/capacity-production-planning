@@ -226,6 +226,38 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-09-01 — **Planejado × Realizado** (feature nova, pedida pelo usuário): a aba que fecha o
+  ciclo. Até aqui ele terminava na Simulação ideal — o supervisor decidia o dia, aplicava, e nada
+  voltava do chão de fábrica. Migration `009_apontamento.sql`.
+  - **Recorte:** o que a Simulação **alocou** (`dia_ideal IS NOT NULL`). Cada linha recebe
+    `status_realizado` (pendente/total/parcial/cancelado) e `quantidade_realizada`. Coluna e não
+    tabela: o apontamento é 1:1 com a linha e morre com ela.
+  - **A quantidade é derivada do status, nunca aceita solta:** `total` copia o planejado,
+    `cancelado` grava 0, `pendente` limpa, e só `parcial` pede número — que tem de caber no
+    planejado (400 acima disso), senão o realizado do mês passaria do planejado sem ninguém ver.
+  - **`feito` ⟺ `status = 'total'`**, com a regra num lugar só (`atualizar()` de `demandas.js` e
+    `apontar()` de `realizado.js`). São o mesmo fato: sem a sincronia, a Lista de demanda diria
+    "não feito" para uma linha concluída aqui. Efeito aceito e documentado: destravar o check na
+    Lista devolve a linha para pendente, apagando um parcial. A migration alinhou o que já estava
+    no banco antes de a regra passar a valer.
+  - **Indicadores só de `producao_montagem`** (decisão do usuário), em **peças**. Por TIPO e não
+    pelo nome: hoje todo `producao_montagem` se chama "Processo de montar completo", mas amarrar
+    o KPI ao texto faria um rename quebrá-lo em silêncio. Fica de fora o "Montar completo" do
+    Bateria EX Gen2, que é industrialização — submontagem, não aparelho pronto.
+  - **Pace = aderência ao plano acumulado até hoje**, não a uma rampa uniforme:
+    `realizado ÷ Σ quantidade com dia_ideal <= current_date`. Usar o plano real é o que impede o
+    número de acusar atraso num dia sem nada planejado. Nada vencido devolve `null`, que a tela
+    mostra como "—" em vez de uma divisão por zero disfarçada de 0%.
+  - **Os indicadores ignoram os filtros da tela** de propósito: indicador que muda ao filtrar a
+    tabela não é indicador do mês, é soma de tela.
+  - **Log em `apontamento_evento`, só desta aba** (decisão do usuário). `demanda_id` com
+    `ON DELETE SET NULL` e o SKU/processo **copiados**: o evento tem de sobreviver à exclusão da
+    linha, que é justamente quando um log importa. Tentativa recusada não vira evento — o log é
+    de mudanças, não de tentativas.
+  - **`inserirLinhaManual` saiu para `api/_lib/demanda.js`**, usada pelas duas telas que criam
+    linha manual. A diferença é só o `diaIdeal`: quem cria por aqui precisa da linha já alocada,
+    senão ela cairia no pool da Simulação e sumiria da própria tela onde foi criada. Remover, por
+    aqui, só vale para `origem = 'manual'` — demanda gerada se cancela, não se apaga.
 - 2026-09-01 — **`retrabalho` entrou no enum `tipo_linha`** (migration 008), para o supervisor
   classificar assim uma linha manual da Lista de demanda.
   - **Escopo é só a demanda** (decisão do usuário, escolhendo "só na Lista de demanda"):

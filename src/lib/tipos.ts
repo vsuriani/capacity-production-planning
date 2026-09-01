@@ -14,6 +14,16 @@ export const ROTULO_TIPO_LINHA: Record<TipoLinha, string> = {
   retrabalho: 'Retrabalho',
 }
 
+/** Apontamento de produção, da aba Planejado × Realizado. Anda junto com `feito`. */
+export type StatusRealizado = 'pendente' | 'total' | 'parcial' | 'cancelado'
+
+export const ROTULO_STATUS: Record<StatusRealizado, string> = {
+  pendente: 'Pendente',
+  total: 'Realizado totalmente',
+  parcial: 'Realizado parcialmente',
+  cancelado: 'Cancelado',
+}
+
 export type Correcoes = Record<string, boolean>
 
 export type Cenario = {
