@@ -400,6 +400,23 @@ try {
     ok('feito_por registrado')
   }
 
+  // Linha manual com o tipo Retrabalho (migration 008). O enum é o que barra tipo inválido,
+  // então provar que 'retrabalho' entra e que a lista o devolve é provar a migration inteira.
+  const { id: manual } = await pedir('POST', 'demandas', {
+    cenarioId: mensal.id,
+    tipoLinha: 'producao_montagem',
+    diaProcesso: '2026-07-08',
+    diaProducao: '2026-07-08',
+    skuCodigo: 'PROD-0114',
+    processoNome: 'Retrabalho manual',
+    quantidade: 12,
+  })
+  await pedir('PATCH', `demandas?id=${manual}`, { tipoLinha: 'retrabalho' })
+  const comRetrabalho = await pedir('GET', `demandas?cenario=${mensal.id}&tipo=retrabalho`)
+  conferir('linha manual aceita o tipo Retrabalho', comRetrabalho.demandas.length, 1)
+  conferir('e o filtro por tipo a encontra', comRetrabalho.demandas[0].processo_nome, 'Retrabalho manual')
+  await pedir('DELETE', `demandas?id=${manual}`)
+
   const csv = await pedir('GET', `demandas?cenario=${mensal.id}&formato=csv`)
   if (typeof csv === 'string' && csv.includes('Tipo da Linha') && csv.split('\r\n').length > 1) {
     ok(`CSV gerado com ${csv.split('\r\n').length - 1} linhas`)

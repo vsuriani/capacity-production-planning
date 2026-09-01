@@ -8,7 +8,11 @@ import {
   Carregando, CelulaData, CelulaNumero, CelulaSelecao, CelulaTexto, Erro, Kpi, SeletorCenario,
 } from '../components/comuns'
 
-const TIPOS: TipoLinha[] = ['defasagem', 'industrializacao', 'producao_montagem']
+/**
+ * `retrabalho` só existe aqui — o cadastro de Processos e sequências não o oferece, então a
+ * geração nunca produz uma linha desse tipo. É rótulo para o que o supervisor lança na mão.
+ */
+const TIPOS: TipoLinha[] = ['defasagem', 'industrializacao', 'producao_montagem', 'retrabalho']
 const OPCOES_TIPO = TIPOS.map((t) => ({ valor: t, rotulo: ROTULO_TIPO_LINHA[t] }))
 
 /**

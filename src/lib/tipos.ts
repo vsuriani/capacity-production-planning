@@ -1,5 +1,9 @@
 export type TipoCenario = 'capacidade' | 'semanal' | 'mensal'
-export type TipoLinha = 'defasagem' | 'industrializacao' | 'producao_montagem'
+/**
+ * `retrabalho` existe só na Lista de demanda: o cadastro de Processos e sequências oferece os
+ * três primeiros, e por isso a explosão nunca gera uma linha desse tipo. Ver migration 008.
+ */
+export type TipoLinha = 'defasagem' | 'industrializacao' | 'producao_montagem' | 'retrabalho'
 export type Bloco = 'producao' | 'industrializacao'
 export type Papel = 'aditivo' | 'retrabalho' | 'ftr'
 
@@ -7,6 +11,7 @@ export const ROTULO_TIPO_LINHA: Record<TipoLinha, string> = {
   defasagem: 'Defasagem',
   industrializacao: 'Industrialização',
   producao_montagem: 'Produção / Montagem',
+  retrabalho: 'Retrabalho',
 }
 
 export type Correcoes = Record<string, boolean>

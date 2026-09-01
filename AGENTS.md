@@ -226,6 +226,25 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-09-01 — **`retrabalho` entrou no enum `tipo_linha`** (migration 008), para o supervisor
+  classificar assim uma linha manual da Lista de demanda.
+  - **Escopo é só a demanda** (decisão do usuário, escolhendo "só na Lista de demanda"):
+    `Processos e sequências` segue com três tipos, então nenhum processo nasce como retrabalho.
+    Por isso **a explosão não precisou mudar** — `explosao.js` casa por `TIPOS_DA_PRODUCAO` ou
+    por `industrializacao`, e retrabalho não está em nenhum dos dois. Retrabalho é atividade não
+    planejada; quem lança é o supervisor.
+  - **Consequência a saber:** escolher um processo numa linha adota o `tipo_linha` do cadastro
+    (`escolherProcesso` em `Demandas.tsx`), então marcar Retrabalho e depois trocar o processo
+    devolve a linha para o tipo do cadastro. E como não há processo de retrabalho, os números
+    (operadores, Pç/hr) são digitados a cada linha. Se isso incomodar, o passo é oferecer o tipo
+    também no cadastro.
+  - **A linha de retrabalho conta no dimensionamento**: `alocacao.js` e `simulacao.js` leem
+    `demanda_processo` sem filtrar tipo, então ela consome operador no heat map e na Simulação.
+    É o comportamento desejado — retrabalho ocupa gente.
+  - O valor foi para o **fim** do enum de propósito: várias consultas fazem `ORDER BY tipo_linha`
+    e a ordenação de enum é a ordem de declaração; inserir no meio reordenaria telas.
+  - `ALTER TYPE ... ADD VALUE` roda dentro de transação desde o PG 12 (PGlite é 16) desde que o
+    valor novo não seja usado na mesma transação — verificado nos dois caminhos de execução.
 - 2026-08-31 — **"Produto filho" aceita vários SKU** (pedido do usuário), migration
   `007_produtos_filhos.sql`: a coluna `processo.sku_filho` virou a tabela `processo_sku_filho`
   e a coluna foi **dropada** — duas fontes para o mesmo fato é como elas divergem.
