@@ -183,7 +183,7 @@ export function PlanejadoRealizado() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi
-              rotulo="Planejado × Realizado"
+              rotulo="Pace de produção"
               valor={`${fmtInt(ind!.realizado)} / ${fmtInt(ind!.planejado)}`}
               detalhe={
                 ind!.conclusao === null
@@ -192,7 +192,7 @@ export function PlanejadoRealizado() {
               }
             />
             <Kpi
-              rotulo="Pace de produção"
+              rotulo="Planejado × Realizado"
               // 100% = no ritmo. Acima disso está adiantado, e o número passa de 100 de
               // propósito — truncar em 100% esconderia justamente quem puxou produção.
               valor={ind!.aderencia === null ? '—' : `${fmtDecimal(ind!.aderencia * 100)}%`}
