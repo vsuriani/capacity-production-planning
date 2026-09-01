@@ -193,12 +193,14 @@ export function PlanejadoRealizado() {
             />
             <Kpi
               rotulo="Pace de produção"
-              valor={ind!.aderencia === null ? '—' : fmtDecimal(ind!.aderencia)}
+              // 100% = no ritmo. Acima disso está adiantado, e o número passa de 100 de
+              // propósito — truncar em 100% esconderia justamente quem puxou produção.
+              valor={ind!.aderencia === null ? '—' : `${fmtDecimal(ind!.aderencia * 100)}%`}
               tom={ind!.aderencia !== null && ind!.aderencia < 1 ? 'alerta' : 'normal'}
               detalhe={
                 ind!.aderencia === null
                   ? 'nada planejado até hoje'
-                  : `${fmtInt(ind!.planejadoAteHoje)} pç venceram até hoje`
+                  : `${fmtInt(ind!.realizado)} de ${fmtInt(ind!.planejadoAteHoje)} pç vencidas`
               }
             />
             <Kpi
