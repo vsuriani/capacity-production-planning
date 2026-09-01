@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   CalendarCheck, CalendarRange, ClipboardList, Database, GitCompare, Globe,
-  Home, LayoutGrid, ListTree, Moon, Sun, Users,
+  Home, LayoutGrid, ListTree, Moon, Scale, Sun, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
@@ -24,6 +24,7 @@ const SECOES: Secao[] = [
       { para: '/demandas', rotulo: 'Lista de demanda', Icone: ClipboardList },
       { para: '/simulacao', rotulo: 'Simulação ideal', Icone: CalendarCheck },
       { para: '/operadores', rotulo: 'Operadores', Icone: Users },
+      { para: '/planejado-realizado', rotulo: 'Planejado × Realizado', Icone: Scale },
     ],
   },
   {

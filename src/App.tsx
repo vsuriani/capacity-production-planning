@@ -7,6 +7,7 @@ import { Calendario } from './paginas/Calendario'
 import { Demandas } from './paginas/Demandas'
 import { Simulacao } from './paginas/Simulacao'
 import { Operadores } from './paginas/Operadores'
+import { PlanejadoRealizado } from './paginas/PlanejadoRealizado'
 import { Roteiros } from './paginas/Roteiros'
 import { Sku } from './paginas/Sku'
 import { Cenarios } from './paginas/Cenarios'
@@ -27,6 +28,7 @@ export function App() {
         <Route path="/demandas" element={<Demandas />} />
         <Route path="/simulacao" element={<Simulacao />} />
         <Route path="/operadores" element={<Operadores />} />
+        <Route path="/planejado-realizado" element={<PlanejadoRealizado />} />
 
         <Route path="/roteiros" element={<Roteiros />} />
         <Route path="/sku" element={<Sku />} />
