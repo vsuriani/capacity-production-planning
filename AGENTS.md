@@ -226,6 +226,27 @@ célula traz o número, o que também resolve o contraste baixo dos passos claro
 
 ## 8. Registro de decisões
 
+- 2026-09-01 — **O Início ganhou o painel "Execução do mês"** (pedido do usuário, depois das
+  features novas). A tela respondia "de quanta gente preciso?" e "o que vem pela frente?"; agora
+  responde antes de tudo **"como estamos indo?"**, que é a pergunta do dia.
+  - Quatro indicadores no topo: Pace de produção (peças), Planejado × Realizado (%), Posicionado
+    na simulação e Linhas apontadas. Mesmos nomes da aba — indicador com nome diferente em duas
+    telas é indicador que ninguém confia.
+  - **`indicadoresDoCenario` saiu para `api/_lib/apontamento.js`**, usada pelo `realizado.js` e
+    pelo `resumo.js`. Dois lugares calculando o mesmo número é como um dashboard começa a mentir;
+    `verificar_api.mjs` compara as duas respostas campo a campo para travar isso.
+  - **Correção junto: o Início somava `demanda_processo` INTEIRA, sem cenário.** Com um mensal só
+    dava certo por acidente — um segundo mês dobraria a carga, os próximos dias e as pendências.
+    Agora `demanda`, `proximosDias`, `simulacao` e `indicadores` são escopados no **mensal em
+    uso** (o do mês corrente, senão o oficial, senão o mais recente), que é o portador do
+    calendário e da alocação. O caso de teste prova que as 67 linhas de julho ficam de fora.
+  - Duas pendências novas: **SKU sem mapeamento** (código sem produto não gera linha e some em
+    silêncio — a falha mais cara do fluxo, então aparece mesmo em zero) e **A apontar**. Saiu
+    "Feriados cadastrados", que era informação de cadastro, não pendência.
+  - Os atalhos do rodapé seguem a ordem do fluxo: montar → posicionar → apontar → conferir.
+  - `/api/resumo` **não tinha nenhum caso** em `verificar_api.mjs`. Agora tem, com dado de
+    verdade: o teste cria uma linha de montagem no cenário em uso e aponta parcial, senão as
+    asserções seriam `0 == 0` — o mensal do mês corrente nasce vazio, e as fixtures são de julho.
 - 2026-09-01 — **Planejado × Realizado** (feature nova, pedida pelo usuário): a aba que fecha o
   ciclo. Até aqui ele terminava na Simulação ideal — o supervisor decidia o dia, aplicava, e nada
   voltava do chão de fábrica. Migration `009_apontamento.sql`.

@@ -539,6 +539,60 @@ try {
   ok(`heat map: ${heat.dias.length} dias × ${heat.qtdOperadores} operadores, jornada ${heat.jornadaLiquida} h`)
   if (heat.dias.length === 0) falha('heat map vazio')
 
+  // ------------------------------------------------------------ resumo do Início
+  //
+  // O Início mostra os mesmos indicadores da aba Planejado × Realizado, e os dois têm de sair
+  // da MESMA função (`_lib/apontamento.js`). Comparar as duas respostas é o que prova isso.
+  console.log('\nresumo do Início')
+  const resumo = await pedir('GET', 'resumo')
+  ok(`cenários no resumo: ${resumo.cenarios.map((c) => c.tipo).join(', ')}`)
+  if (resumo.cenarioDaExecucao) ok(`execução escopada em: ${resumo.cenarioDaExecucao.nome}`)
+  else falha('esperava um cenário mensal para a execução')
+
+  // O escopo é o ponto: o mensal EM USO é o do mês corrente, e a demanda das fixtures está em
+  // julho. Antes o Início somava `demanda_processo` inteira e traria essas 67 linhas de um
+  // cenário que não está em uso — é essa a soma indevida que este caso trava.
+  const execucaoId = resumo.cenarioDaExecucao.id
+  const doCenario = await pedir('GET', `demandas?cenario=${execucaoId}`)
+  conferir('a demanda do Início é a do cenário em uso', resumo.demanda.total, doCenario.total)
+  const deJulho = await pedir('GET', `demandas?cenario=${mensal.id}`)
+  if (mensal.id !== execucaoId && deJulho.total > 0 && resumo.demanda.total !== deJulho.total) {
+    ok(`e ignora as ${deJulho.total} linhas do cenário de julho, que não está em uso`)
+  } else {
+    falha('o resumo deveria escopar a demanda no cenário em uso')
+  }
+
+  // Dá dado de verdade ao cenário em uso — sem isso os números abaixo seriam 0 == 0, que não
+  // prova nada. Uma linha de montagem de 120 peças, posicionada e apontada pela metade.
+  const { id: linhaResumo } = await pedir('POST', `realizado?cenario=${execucaoId}`, {
+    tipoLinha: 'producao_montagem',
+    diaProcesso: '2026-09-01',
+    diaProducao: '2026-09-01',
+    skuCodigo: 'PROD-0114',
+    processoNome: 'Montagem do resumo',
+    quantidade: 120,
+  })
+  await pedir('PATCH', `realizado?id=${linhaResumo}`, {
+    status: 'parcial',
+    quantidadeRealizada: 30,
+  })
+
+  const comDado = await pedir('GET', 'resumo')
+  const daAba = await pedir('GET', `realizado?cenario=${execucaoId}`)
+  conferir('o Início vê o planejado', comDado.indicadores.planejado, 120)
+  conferir('e o realizado parcial', comDado.indicadores.realizado, 30)
+  conferir('o pace é realizado ÷ vencido', comDado.indicadores.aderencia, 30 / 120)
+  conferir(
+    'e bate com a aba, número por número',
+    JSON.stringify(comDado.indicadores),
+    JSON.stringify(daAba.indicadores),
+  )
+  conferir('a linha nasce alocada, fora do pool', comDado.simulacao.noPool, 0)
+
+  await pedir('DELETE', `realizado?id=${linhaResumo}`)
+  const semDado = await pedir('GET', 'resumo')
+  conferir('removida, o indicador volta a zero', semDado.indicadores.linhas, 0)
+
   // ------------------------------------------------------------ parâmetros e desvios
   console.log('\nparâmetros e catálogo de desvios')
   const params = await pedir('GET', 'parametros')

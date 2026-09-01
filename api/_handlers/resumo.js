@@ -4,6 +4,7 @@ const { exigirAuth } = require('../_lib/auth');
 const { query } = require('../_lib/db');
 const { carregarCenario, calcularCenario } = require('../_lib/cenario');
 const { gradeDoMes, diasUteisDoMes } = require('../_lib/motor/calendario');
+const { indicadoresDoCenario } = require('../_lib/apontamento');
 
 /**
  * Índice (0-based) da semana do mês que contém `hoje`, na mesma grade que o Calendário
@@ -54,7 +55,7 @@ async function handler(req, res) {
   const email = exigirAuth(req, res);
   if (!email) return;
 
-  const [hojeRows, cenarios, cadastro, demanda, proximos, pendencias, importacao, feriados] =
+  const [hojeRows, cenarios, cadastro, pendencias, importacao, feriados] =
     await Promise.all([
     query('SELECT CURRENT_DATE::text AS hoje'),
     // O cenário do mês corrente vem primeiro: é o que está em uso, não o último criado.
@@ -71,28 +72,6 @@ async function handler(req, res) {
               (SELECT count(*) FROM processo)::int         AS processo,
               (SELECT count(*) FROM sku_produto)::int      AS mapeamentos,
               (SELECT count(*) FROM feriado)::int          AS feriados`,
-    ),
-    query(
-      `SELECT count(*)::int                                          AS total,
-              count(*) FILTER (WHERE feito)::int                     AS feitas,
-              count(*) FILTER (WHERE tempo_horas IS NULL)::int       AS sem_tempo,
-              COALESCE(sum(tempo_horas), 0)::float                   AS horas,
-              min(dia_processo)::text                                AS de,
-              max(dia_processo)::text                                AS ate
-         FROM demanda_processo`,
-    ),
-    // Carga por dia nos próximos dias com demanda pendente. Sem o corte em CURRENT_DATE
-    // o painel encalha nos dias vencidos — o pendente mais antigo, não o que vem pela frente.
-    query(
-      `SELECT dia_processo::text AS data,
-              count(*)::int AS processos,
-              COALESCE(sum(tempo_horas), 0)::float AS horas
-         FROM demanda_processo
-        WHERE NOT feito
-          AND dia_processo >= CURRENT_DATE
-        GROUP BY dia_processo
-        ORDER BY dia_processo
-        LIMIT 8`,
     ),
     // SKU na grade que não geram nenhuma linha de demanda.
     query(
@@ -170,16 +149,83 @@ async function handler(req, res) {
     });
   }
 
+  // O mensal é o portador do calendário, da lista de demanda e da alocação — é dele que sai
+  // tudo que é de execução. Antes a tela somava `demanda_processo` INTEIRA, sem cenário: com um
+  // mensal só dava certo por acidente, e um segundo mês dobraria os números do Início.
+  const mensal = porTipo.find((c) => c.tipo === 'mensal') ?? null;
+  const execucao = mensal ? await execucaoDoMes(mensal.id) : null;
+
   res.json({
     email,
     cenarios: porTipo,
     totalCenarios: cenarios.rows.length,
     cadastro: cadastro.rows[0],
-    demanda: demanda.rows[0],
-    proximosDias: proximos.rows,
+    cenarioDaExecucao: mensal && { id: mensal.id, nome: mensal.nome },
+    demanda: execucao ? execucao.demanda : ZERADO,
+    proximosDias: execucao ? execucao.proximosDias : [],
+    simulacao: execucao ? execucao.simulacao : null,
+    indicadores: execucao ? execucao.indicadores : null,
     skuSemRoteiro: pendencias.rows.map((r) => r.sku_codigo),
     ultimaImportacao: importacao.rows[0] ?? null,
   });
+}
+
+const ZERADO = { total: 0, feitas: 0, sem_tempo: 0, horas: 0, de: null, ate: null };
+
+/**
+ * Tudo que é de execução, escopado no cenário mensal em uso: a lista de demanda, o que vem pela
+ * frente, quanto já saiu da Simulação e os indicadores de apontamento.
+ *
+ * Roda depois do laço dos cenários porque depende de saber QUAL mensal está em uso — o do mês
+ * corrente, senão o oficial, senão o mais recente.
+ */
+async function execucaoDoMes(cenarioId) {
+  const [demanda, proximos, simulacao, indicadores] = await Promise.all([
+    query(
+      `SELECT count(*)::int                                          AS total,
+              count(*) FILTER (WHERE feito)::int                     AS feitas,
+              count(*) FILTER (WHERE tempo_horas IS NULL)::int       AS sem_tempo,
+              COALESCE(sum(tempo_horas), 0)::float                   AS horas,
+              min(dia_processo)::text                                AS de,
+              max(dia_processo)::text                                AS ate
+         FROM demanda_processo WHERE cenario_id = $1`,
+      [cenarioId],
+    ),
+    // Carga por dia nos próximos dias com demanda pendente. Sem o corte em CURRENT_DATE
+    // o painel encalha nos dias vencidos — o pendente mais antigo, não o que vem pela frente.
+    query(
+      `SELECT dia_processo::text AS data,
+              count(*)::int AS processos,
+              COALESCE(sum(tempo_horas), 0)::float AS horas
+         FROM demanda_processo
+        WHERE cenario_id = $1
+          AND NOT feito
+          AND dia_processo >= CURRENT_DATE
+        GROUP BY dia_processo
+        ORDER BY dia_processo
+        LIMIT 8`,
+      [cenarioId],
+    ),
+    // Quanto da lista já foi posicionado na Simulação. O que sobra no pool é o que ainda não
+    // tem dia decidido — e é o que trava o Planejado × Realizado, que só enxerga o alocado.
+    query(
+      `SELECT count(*)::int                                        AS total,
+              count(*) FILTER (WHERE dia_ideal IS NOT NULL)::int   AS alocadas
+         FROM demanda_processo WHERE cenario_id = $1`,
+      [cenarioId],
+    ),
+    indicadoresDoCenario(cenarioId),
+  ]);
+
+  return {
+    demanda: demanda.rows[0],
+    proximosDias: proximos.rows,
+    simulacao: {
+      ...simulacao.rows[0],
+      noPool: simulacao.rows[0].total - simulacao.rows[0].alocadas,
+    },
+    indicadores,
+  };
 }
 
 module.exports = { handler };
