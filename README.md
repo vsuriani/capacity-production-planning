@@ -306,11 +306,36 @@ node scripts/captura.mjs semanal dark .cache/telas/semanal.png
 
 ## Deploy
 
-`git push` na `main` → GitHub Actions builda e publica em
-`https://dimensionamento-de-linha.vibe.tractian.com`.
+Duas Raspberry Pi na rede interna, cada uma com um runner self-hosted deste repo. O deploy é
+**manual**: GitHub → **Actions** → **Deploy** → **Run workflow** → escolha a branch e o `server`.
 
-Segredos via `APP_SECRETS` (GitHub Secret → variáveis de ambiente do container). Ver
-[docker-compose.yaml](docker-compose.yaml) para os labels `vibe.*`.
+| | dev | prod |
+|---|---|---|
+| App | **http://10.8.228.92:3001** | **http://10.8.220.57:3007** |
+| SSH | `tav@10.8.228.92` (`tav-500-itp-1`) | `production@10.8.220.57` (`Production`) |
+| Runner (label) | `rpi-dev` | `rpi-prod` |
+| Banco (só no host) | `127.0.0.1:5435` | `127.0.0.1:5435` |
+| Releases | `/opt/capacity-production-planning/releases/<sha>` | idem |
+
+As portas foram escolhidas conferindo `ss -tln` nas duas máquinas. Já estavam ocupadas: na dev
+3000 (`manutrac-app`), 3100 (`sensor-eval`), 5432 (`manutrac-db`) e 5433 (`sensor-eval-db`); na
+prod 3101 (`sensor-eval`), 5434 (`sensor-eval-db`), 8080, 5000, 5005, 9101 e 9103. **Confira antes
+de mexer em porta** — as duas Pis hospedam outros apps.
+
+O workflow ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) builda a imagem na
+própria Pi, sobe via `docker compose`, faz health check e, se falhar, **rola de volta** para a
+release anterior. Mantém as 3 últimas releases. O runner roda como serviço systemd
+(`actions.runner.vsuriani-capacity-production-planning.rpi-{dev,prod}`), com boot automático.
+
+> O destino final é a [Vibe](dev-standards/docs/infra/vibe-platform.md)
+> (`dimensionamento-de-linha.vibe.tractian.com`) — os labels `vibe.*` do
+> [docker-compose.yaml](docker-compose.yaml) existem para isso. **Ainda não há workflow que publique
+> lá**; as Pis são o ambiente de hoje.
+
+> ⚠️ Nas Pis não existe o gateway da Vibe que injeta `X-Auth-Email`, e o Dockerfile fixa
+> `NODE_ENV=production` — que desliga o fallback `DEV_FAKE_EMAIL` em
+> [api/_lib/auth.js](api/_lib/auth.js). A app sobe, mas **toda chamada de API responde 401** até que
+> se injete um e-mail por variável de ambiente.
 
 ---
 
