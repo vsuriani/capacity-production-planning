@@ -1,0 +1,192 @@
+name: Deploy
+
+# Workflow SELF-CONTAINED (baseado no kit rpi-deploy, examples/deploy.docker-compose.yml).
+# Self-contained e não reusable porque o kit vive em faraujo-tractian e este repo é
+# pessoal (vsuriani) — reusable privado não cruza contas.
+#
+# Deploy = nova release (git archive) + docker compose up -d --build, com
+# COMPOSE_PROJECT_NAME fixo (o volume pgdata persiste entre deploys e rollbacks).
+#
+# Actions -> Deploy -> Run workflow -> [branch] + [dev/prod] -> Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch a deployar"
+        required: true
+        default: "feat/pcp-web-app"
+      server:
+        description: "Servidor de destino"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, "rpi-${{ inputs.server }}"]
+    concurrency:
+      group: deploy-${{ inputs.server }}-capacity-production-planning
+      cancel-in-progress: false
+    env:
+      APP_NAME: capacity-production-planning
+      APP_BASE: /opt/capacity-production-planning
+      COMPOSE_PROJECT_NAME: capacity-production-planning
+
+    steps:
+      - name: Checkout (${{ inputs.branch }})
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Parâmetros do ambiente
+        run: |
+          # Portas conferidas nas duas Pis (ss -tln) antes de escolher:
+          #   dev  10.8.228.92 -> ocupadas 3000 (manutrac-app), 3100 (sensor-eval)
+          #   prod 10.8.220.57 -> ocupadas 3101 (sensor-eval), 8080, 5000, 5005, 9101, 9103
+          # 3001 e 3007 estão livres nas duas.
+          if [ "${{ inputs.server }}" = "prod" ]; then PORT=3007; else PORT=3001; fi
+          echo "HOST_PORT=$PORT" >> "$GITHUB_ENV"
+          # O IP sai do próprio runner — nada de hardcode por ambiente.
+          echo "APP_IP=$(hostname -I | awk '{print $1}')" >> "$GITHUB_ENV"
+          echo "HEALTH_URL=http://localhost:$PORT/api/me" >> "$GITHUB_ENV"
+          echo "ambiente=${{ inputs.server }} host_port=$PORT"
+          echo "docker: $(docker --version) | compose: $(docker compose version --short 2>/dev/null)"
+
+      - name: Preparar release (git archive + symlink)
+        id: release
+        run: |
+          set -euo pipefail
+          if [ ! -d "$APP_BASE/releases" ]; then
+            echo "::error::$APP_BASE/releases não existe. Rode o setup-pi.sh do rpi-deploy nesta Pi primeiro."
+            exit 1
+          fi
+          RELEASE="$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          DEST="$APP_BASE/releases/$RELEASE"
+          echo "::group::Copiando código para $DEST"
+          mkdir -p "$DEST"
+          git archive HEAD | tar -x -C "$DEST"
+          echo "::endgroup::"
+
+          echo "::group::Ajustando portas do compose (host)"
+          # app: publica na porta do ambiente.
+          # db: 5435 e só em 127.0.0.1. Na dev o 5432 é do manutrac-db e o 5433 do
+          # sensor-eval-db; na prod o 5434 é do sensor-eval-db. 5435 está livre nas duas.
+          sed -i "s#\"3000:3000\"#\"${HOST_PORT}:3000\"#" "$DEST/docker-compose.yaml"
+          sed -i "s#\"5432:5432\"#\"127.0.0.1:5435:5432\"#" "$DEST/docker-compose.yaml"
+          grep -nE '3000|3001|3007|5432|5435' "$DEST/docker-compose.yaml"
+          echo "::endgroup::"
+
+          # override: política de restart (auto-recupera se o container cair)
+          cat > "$DEST/docker-compose.override.yaml" <<'OVR'
+          services:
+            app:
+              restart: unless-stopped
+            db:
+              restart: unless-stopped
+          OVR
+
+          ln -sfn "$DEST" "$APP_BASE/current"
+          echo "current -> $(readlink -f "$APP_BASE/current")"
+          cat > "$APP_BASE/current/.release-info" <<EOF
+          release=$RELEASE
+          sha=$GITHUB_SHA
+          branch=${{ inputs.branch }}
+          server=${{ inputs.server }}
+          deployed_by=${GITHUB_ACTOR:-actions}
+          run=$GITHUB_RUN_ID
+          EOF
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+
+      - name: Build & up (docker compose)
+        id: up
+        run: |
+          set -euo pipefail
+          cd "$APP_BASE/current"
+          echo "::group::docker compose up -d --build (projeto: $COMPOSE_PROJECT_NAME)"
+          docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --build
+          echo "::endgroup::"
+          docker compose ps
+
+      - name: Health check
+        id: health
+        run: |
+          set -uo pipefail
+          # 401 é resposta válida aqui: /api/me exige o header X-Auth-Email do gateway.
+          # Qualquer coisa < 500 prova que o Express subiu e está roteando.
+          echo "Aguardando $HEALTH_URL (build + migrations podem levar até ~2min)..."
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$HEALTH_URL" 2>/dev/null || echo 000)
+            if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then
+              echo "::notice::App respondendo (HTTP $code) na tentativa $i"
+              exit 0
+            fi
+            echo "tentativa $i/40: HTTP $code; aguardando 4s..."
+            sleep 4
+          done
+          echo "::error::Health check falhou ($HEALTH_URL)"
+          {
+            echo "== docker compose ps =="; (cd "$APP_BASE/current" && docker compose ps) || true
+            echo "== logs app (100) =="; (cd "$APP_BASE/current" && docker compose logs --tail=100 app) || true
+            echo "== logs db (40) =="; (cd "$APP_BASE/current" && docker compose logs --tail=40 db) || true
+          } > "$RUNNER_TEMP/diag.txt" 2>&1
+          cat "$RUNNER_TEMP/diag.txt"
+          exit 1
+
+      - name: Cleanup (releases + imagens órfãs)
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$APP_BASE/releases" 2>/dev/null || exit 0
+          CURRENT="$(readlink -f "$APP_BASE/current" || true)"
+          ls -1dt */ 2>/dev/null | sed 's#/$##' | tail -n +6 | while read -r old; do
+            [ "$(readlink -f "$old")" != "$CURRENT" ] && { echo "rm release $old"; rm -rf "$old"; }
+          done
+          docker image prune -f >/dev/null 2>&1 || true
+
+      - name: Resumo do deploy (fluxograma + status)
+        if: always()
+        run: |
+          co="${{ steps.checkout.outcome }}"; rl="${{ steps.release.outcome }}"
+          up="${{ steps.up.outcome }}"; he="${{ steps.health.outcome }}"
+          icon() { case "$1" in success) echo "✅";; failure) echo "❌";; skipped) echo "⏭️";; *) echo "▫️";; esac; }
+          cls()  { case "$1" in success) echo "ok";; failure) echo "bad";; skipped) echo "skip";; *) echo "skip";; esac; }
+          IP="${APP_IP:-?}"; PORT="${HOST_PORT:-?}"; URL="http://$IP:$PORT"
+          {
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "## ✅ Deploy \`${{ inputs.server }}\` concluído — dimensionamento de linha"
+            else
+              echo "## ❌ Deploy \`${{ inputs.server }}\` FALHOU — dimensionamento de linha"
+            fi
+            echo ""
+            echo '```mermaid'
+            echo "flowchart LR"
+            echo "  C[Checkout]:::$(cls "$co") --> R[Release]:::$(cls "$rl") --> U[Build & Up]:::$(cls "$up") --> H[Health]:::$(cls "$he")"
+            echo "  classDef ok fill:#1f7a1f,color:#fff,stroke:#0b3d0b;"
+            echo "  classDef bad fill:#b30000,color:#fff,stroke:#5c0000;"
+            echo "  classDef skip fill:#888,color:#fff,stroke:#555;"
+            echo '```'
+            echo ""
+            echo "| Etapa | Status |"; echo "|---|---|"
+            echo "| Checkout | $(icon "$co") |"
+            echo "| Release  | $(icon "$rl") |"
+            echo "| Build & Up | $(icon "$up") |"
+            echo "| Health   | $(icon "$he") |"
+            echo ""
+            echo "| Campo | Valor |"; echo "|---|---|"
+            echo "| Ambiente | \`${{ inputs.server }}\` |"
+            echo "| Raspberry | \`$IP\` |"
+            echo "| **Acessar app** | $URL |"
+            echo "| Branch | \`${{ inputs.branch }}\` |"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Release | \`${RELEASE:-—}\` |"
+            if [ "${{ job.status }}" != "success" ] && [ -f "$RUNNER_TEMP/diag.txt" ]; then
+              echo ""; echo "### Diagnóstico da falha"; echo '```'; cat "$RUNNER_TEMP/diag.txt"; echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

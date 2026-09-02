@@ -1,0 +1,11 @@
+# O deploy usa `git archive`, então isto protege sobretudo os builds locais:
+# sem estas linhas, o `COPY api ./api` arrasta o node_modules da máquina (arch errada)
+# e o .cache leva o datadir do PGlite de dev para dentro da imagem.
+node_modules
+**/node_modules
+.cache
+dist
+.git
+.env
+.env.*
+!.env.example

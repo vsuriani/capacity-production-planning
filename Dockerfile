@@ -16,8 +16,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Cluster air-gapped: toda dependência é instalada aqui, no build.
-COPY api/package.json api/package-lock.json* ./api/
-RUN cd api && npm install --omit=dev
+# Instala na RAIZ (/app/node_modules), não em /app/api: o server.cjs mora na raiz e
+# o require dele não enxerga api/node_modules. Da raiz, os dois lados resolvem.
+COPY api/package.json api/package-lock.json* ./
+RUN npm install --omit=dev
 
 COPY server.cjs ./
 COPY api ./api
