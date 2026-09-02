@@ -83,14 +83,20 @@ jobs:
           grep -nE '3000|3001|3007|5432|5435' "$DEST/docker-compose.yaml"
           echo "::endgroup::"
 
-          # override: política de restart (auto-recupera se o container cair)
+          # override: restart automático + auth.
+          # Nas Pis não existe o gateway da Vibe injetando X-Auth-Email e o container roda
+          # com NODE_ENV=production, o que desliga o fallback de dev — sem AUTH_FALLBACK_EMAIL
+          # toda rota responde 401.
           cat > "$DEST/docker-compose.override.yaml" <<'OVR'
           services:
             app:
               restart: unless-stopped
+              environment:
+                AUTH_FALLBACK_EMAIL: "dev@tractian.com"
             db:
               restart: unless-stopped
           OVR
+          echo "::group::override"; cat "$DEST/docker-compose.override.yaml"; echo "::endgroup::"
 
           ln -sfn "$DEST" "$APP_BASE/current"
           echo "current -> $(readlink -f "$APP_BASE/current")"
@@ -118,12 +124,12 @@ jobs:
         id: health
         run: |
           set -uo pipefail
-          # 401 é resposta válida aqui: /api/me exige o header X-Auth-Email do gateway.
-          # Qualquer coisa < 500 prova que o Express subiu e está roteando.
+          # Exigimos < 400: com AUTH_FALLBACK_EMAIL no override, /api/me tem que responder 200.
+          # Aceitar 401 aqui deixaria passar um deploy que sobe mas é inutilizável na tela.
           echo "Aguardando $HEALTH_URL (build + migrations podem levar até ~2min)..."
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$HEALTH_URL" 2>/dev/null || echo 000)
-            if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then
+            if [ "$code" != "000" ] && [ "$code" -lt 400 ]; then
               echo "::notice::App respondendo (HTTP $code) na tentativa $i"
               exit 0
             fi

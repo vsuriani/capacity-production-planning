@@ -332,10 +332,12 @@ release anterior. Mantém as 3 últimas releases. O runner roda como serviço sy
 > [docker-compose.yaml](docker-compose.yaml) existem para isso. **Ainda não há workflow que publique
 > lá**; as Pis são o ambiente de hoje.
 
-> ⚠️ Nas Pis não existe o gateway da Vibe que injeta `X-Auth-Email`, e o Dockerfile fixa
-> `NODE_ENV=production` — que desliga o fallback `DEV_FAKE_EMAIL` em
-> [api/_lib/auth.js](api/_lib/auth.js). A app sobe, mas **toda chamada de API responde 401** até que
-> se injete um e-mail por variável de ambiente.
+**Auth nas Pis.** Não há gateway da Vibe injetando `X-Auth-Email`, e o container roda com
+`NODE_ENV=production`, o que desliga o fallback `DEV_FAKE_EMAIL`. O deploy escreve um
+`docker-compose.override.yaml` com **`AUTH_FALLBACK_EMAIL=dev@tractian.com`**, aceito por
+[api/_lib/auth.js](api/_lib/auth.js) em qualquer ambiente — todo acesso entra como esse usuário.
+Não há login nem separação por pessoa nas Pis; quem alcança o IP usa o app. Quando a app for para
+a Vibe, o header do gateway volta a ter precedência e basta remover a variável.
 
 ---
 
