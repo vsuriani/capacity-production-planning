@@ -10,6 +10,7 @@ import { Operadores } from './paginas/Operadores'
 import { PlanejadoRealizado } from './paginas/PlanejadoRealizado'
 import { Roteiros } from './paginas/Roteiros'
 import { Sku } from './paginas/Sku'
+import { Tempos } from './paginas/Tempos'
 import { Cenarios } from './paginas/Cenarios'
 import { Importar } from './paginas/Importar'
 
@@ -32,6 +33,7 @@ export function App() {
 
         <Route path="/roteiros" element={<Roteiros />} />
         <Route path="/sku" element={<Sku />} />
+        <Route path="/tempos" element={<Tempos />} />
 
         <Route path="/cenarios" element={<Cenarios />} />
         <Route path="/importar" element={<Importar />} />
