@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   CalendarCheck, CalendarRange, ClipboardList, Database, GitCompare, Globe,
-  Home, LayoutGrid, ListTree, Moon, Scale, Sun, Users,
+  Home, LayoutGrid, ListTree, Moon, Scale, Sun, Timer, Users,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
@@ -32,6 +32,7 @@ const SECOES: Secao[] = [
     itens: [
       { para: '/roteiros', rotulo: 'Processos e sequências', Icone: ListTree },
       { para: '/sku', rotulo: 'Base de PROD', Icone: Database },
+      { para: '/tempos', rotulo: 'Tempos', Icone: Timer },
     ],
   },
   {

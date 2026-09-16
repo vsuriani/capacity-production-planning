@@ -37,6 +37,10 @@ jobs:
       APP_NAME: capacity-production-planning
       APP_BASE: /opt/capacity-production-planning
       COMPOSE_PROJECT_NAME: capacity-production-planning
+      # Planilha "Análises Best Laps" — é um ID, não segredo. O que é segredo é a chave que
+      # abre ela (secrets.GOOGLE_SA_JSON).
+      TEMPOS_SHEET_ID: "1sTJrXZ3TBi444ZFJCg9PR8L74RnYCQm4jlRWgnrdeCU"
+      TEMPOS_SYNC_HORAS: "24"
 
     steps:
       - name: Checkout (${{ inputs.branch }})
@@ -58,6 +62,26 @@ jobs:
           echo "HEALTH_URL=http://localhost:$PORT/api/me" >> "$GITHUB_ENV"
           echo "ambiente=${{ inputs.server }} host_port=$PORT"
           echo "docker: $(docker --version) | compose: $(docker compose version --short 2>/dev/null)"
+
+      - name: Credencial do sync de tempos (opcional)
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+        run: |
+          set -euo pipefail
+          # Fora da release e fora do repo. Sem o secret configurado, o arquivo não existe e o
+          # app sobe com o sync desarmado — é o estado de antes desta feature.
+          mkdir -p "$APP_BASE/secrets"
+          chmod 700 "$APP_BASE/secrets"
+          if [ -n "${GOOGLE_SA_JSON:-}" ]; then
+            umask 077
+            printf '%s' "$GOOGLE_SA_JSON" > "$APP_BASE/secrets/google-sa.json"
+            chmod 600 "$APP_BASE/secrets/google-sa.json"
+            # Só o client_email no log — nunca a chave.
+            python3 -c "import json,sys;print('service account:', json.load(open(sys.argv[1]))['client_email'])" \
+              "$APP_BASE/secrets/google-sa.json"
+          else
+            echo "secrets.GOOGLE_SA_JSON não configurado — sync de tempos ficará desarmado"
+          fi
 
       - name: Preparar release (git archive + symlink)
         id: release
@@ -87,15 +111,40 @@ jobs:
           # Nas Pis não existe o gateway da Vibe injetando X-Auth-Email e o container roda
           # com NODE_ENV=production, o que desliga o fallback de dev — sem AUTH_FALLBACK_EMAIL
           # toda rota responde 401.
-          cat > "$DEST/docker-compose.override.yaml" <<'OVR'
+          # Sync dos tempos (planilha "Análises Best Laps"), só quando o segredo existe.
+          #
+          # A chave NÃO entra no compose nem na imagem: fica em $APP_BASE/secrets — FORA da
+          # release, porque o cleanup apaga releases antigas e o segredo tem que sobreviver —
+          # com chmod 600, montada read-only no container. `api/_lib/sheets.js` já lê de
+          # GOOGLE_APPLICATION_CREDENTIALS, então não há caminho novo no código.
+          #
+          # Sem o segredo o app sobe exatamente como antes: `server.cjs` não arma o agendador.
+          TEMPOS_ENV=""
+          TEMPOS_VOL=""
+          if [ -s "$APP_BASE/secrets/google-sa.json" ]; then
+            TEMPOS_ENV=$(printf '      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json\n      TEMPOS_SHEET_ID: "%s"\n      TEMPOS_SYNC_HORAS: "%s"' \
+              "$TEMPOS_SHEET_ID" "$TEMPOS_SYNC_HORAS")
+            TEMPOS_VOL=$(printf '    volumes:\n      - %s/secrets/google-sa.json:/run/secrets/google-sa.json:ro' "$APP_BASE")
+            echo "sync de tempos: ARMADO"
+          else
+            echo "sync de tempos: desarmado (sem secrets.GOOGLE_SA_JSON)"
+          fi
+
+          # Heredoc NÃO aspado: as variáveis acima precisam expandir. Um único bloco `app:`.
+          cat > "$DEST/docker-compose.override.yaml" <<OVR
           services:
             app:
               restart: unless-stopped
               environment:
                 AUTH_FALLBACK_EMAIL: "dev@tractian.com"
+          $TEMPOS_ENV
+          $TEMPOS_VOL
             db:
               restart: unless-stopped
           OVR
+
+          # Sai a linha vazia que o bloco desarmado deixa — YAML aceita, mas suja o log.
+          sed -i '/^[[:space:]]*$/d' "$DEST/docker-compose.override.yaml"
           echo "::group::override"; cat "$DEST/docker-compose.override.yaml"; echo "::endgroup::"
 
           ln -sfn "$DEST" "$APP_BASE/current"

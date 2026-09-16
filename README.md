@@ -142,6 +142,7 @@ fora do repositório**, em `~/.secrets/`. Nunca comite chave — ver
 | `/operadores` | Dimensionamento de Operadores | Heat map de ocupação dia × operador |
 | `/roteiros` | Base simplificada | Criar processos e editar todo campo, inclusive o produto. **Total/dia é derivado** (Pç/hr × 8) |
 | `/sku` | Base de PROD | Catálogo + mapa SKU → produto + pendências |
+| `/tempos` | — | Tempo-padrão por dispositivo vindo da planilha **Análises Best Laps**: soma dos processos, diff contra o cadastro, pendências e histórico de leituras |
 | `/cenarios` | — | Criar, duplicar, excluir e comparar headcount. Lista todos os tipos e meses, com **carga listada** por cenário |
 | `/importar` | — | Como importar, histórico e o catálogo de divergências |
 
@@ -180,6 +181,55 @@ do próprio tipo, e um mensal novo nascia com os tempos de um mensal parado no t
 semanal oficial, senão o semanal mais recente — e só entra na eleição quem tem ao menos um tempo
 maior que zero, para um cenário zerado não propagar o vazio.
 
+### Os tempos
+
+O tempo-padrão de cada dispositivo vem da planilha **Análises Best Laps** (aba `Perfomancedev`),
+mantida pela Engenharia, lida a cada 24 h pelo agendador em [server.cjs](server.cjs).
+
+A coluna usada é **`goal`**, em **minuto-operador por peça**. O tempo-padrão de um dispositivo é a
+**soma dos processos** do device model:
+
+```
+tempo-padrão     = Σ goal dos processos, SEM "Processo de montar completo"  -> meta_padrao
+defasagem        = Σ goal das linhas process_type=Defasagem        ┐
+industrialização = Σ goal das linhas process_type=Industrialização  ├ recortes DENTRO do total
+produção         = Σ goal das linhas process_type=Produção          ┘
+```
+
+**"Processo de montar completo" fica fora da soma.** É uma linha de rollup: repete num número só o
+que as outras linhas do mesmo produto já detalham. Onde a decomposição da planilha está completa
+ela vale **exatamente** a soma do detalhe — Omni Trac 12,08 = 12,08, Omni Receiver 16,47 = 16,47 —
+então contar as duas dobraria o tempo.
+
+A âncora contra o cadastro que já existia é **Garra Uni Trac**, que não tem rollup e por isso é
+imune à decisão: dá **15,34** contra os 15,30 de `meta_padrao`. Smart Trac Ultra Ex dá 4,17 contra
+4,40 (−5,2%). É o que [scripts/verificar_tempos_bestlap.mjs](scripts/verificar_tempos_bestlap.mjs)
+trava.
+
+> Nos outros seis device models com rollup os valores divergem (de −64% a +174%) — decomposição
+> parcial na planilha, ou rollup velho. Quem manda é o detalhe. Energy Trac é o caso mais visível:
+> dá 14,18 contra os 22,70 do cadastro, porque lá o detalhe de Produção soma 5,79 contra um rollup
+> de 8,37. Se o 22,70 estiver certo, a correção é na origem.
+
+Isto **não** alimenta `dispositivo_metrica` / `/dimensionamento-global`: o aditivo "Montagem" de lá
+é o rollup (8,37 em Energy Trac), um componente do parcial daquela tela — não o tempo-padrão do
+dispositivo. Aquela tela segue vindo de `docs/tempos-dispositivo.tsv`, por carga manual.
+
+`goal_max` é `goal ÷ 0,80` (em 156 das 188 linhas; 30 usam ÷0,833). Não é usado: a eficiência
+mora em `coef_eficiencia`, por cenário, onde o PCP consegue ver e mudar. **Pôr `coef_eficiencia`
+em 0,80 reproduz `goal_max` exatamente.**
+
+**O sync atualiza o cadastro, não o cenário em andamento.** `dispositivo.meta_padrao` acompanha a
+planilha sozinho e cenário novo já nasce com o tempo fresco; `cenario_meta` é cópia editável por
+mês e só muda por ação explícita (`POST /api/tempos?acao=aplicar-cenario`). Sem isso, o headcount
+do mês que o PCP está rodando mudaria no meio da operação.
+
+Conferir antes de armar num ambiente:
+
+```bash
+node scripts/sincronizar_tempos.mjs --dry-run   # mostra o diff, não grava nada
+```
+
 ### O motor
 
 Módulos puros em [api/_lib/motor/](api/_lib/motor/) — recebem dados, devolvem
@@ -191,6 +241,7 @@ Módulos puros em [api/_lib/motor/](api/_lib/motor/) — recebem dados, devolvem
 | `operadores.js` | `Σ(Meta × Qtd)/60 ÷ (diasÚteis × (jornada − pausa)) ÷ coefEficiência` |
 | `metrica.js` | `Σ(aditivos) + retrabalho × (1 − FTR)`, depois `÷ coefEficiência` |
 | `calendario.js` | `diaDefasagemFiel` (os 8 ramos do script original) **e** `subtrairDiasUteis` |
+| `tempos.js` | soma os processos do device model (sem a linha de rollup), com pendência para toda falha de cobertura |
 | `explosao.js` | demanda do calendário → processos, via SKU→produto e roteiro |
 | `alocacao.js` | horas por operador, nas 3 passadas do script original |
 | `simulacao.js` | dimensionamento de um dia: homem-hora, operadores exigidos, se cabe |
@@ -269,6 +320,7 @@ node scripts/verificar_importacao.mjs # importação do payload real + idempotê
 node scripts/verificar_api.mjs        # todas as rotas ponta a ponta
 node scripts/verificar_agosto.mjs     # Agosto/2026 contra os números da planilha
 node scripts/verificar_tempos_padrao.mjs # cenário novo herda os tempos do semanal
+node scripts/verificar_tempos_bestlap.mjs # agregação da planilha de tempos + aplicação
 npx tsc --noEmit && npm run build     # frontend
 ```
 
@@ -301,6 +353,7 @@ node scripts/captura.mjs semanal dark .cache/telas/semanal.png
 | `scripts/check_gs_mapping.py` | confere os mapeamentos do Apps Script contra os dados |
 | `scripts/captura.mjs` | screenshot via DevTools Protocol |
 | `scripts/verificar_tempos_padrao.mjs` | prova que cenário novo herda os tempos do semanal |
+| `scripts/sincronizar_tempos.mjs` | lê a planilha de tempos: `--dry-run` mostra o diff, `--fixture` recongela |
 
 ---
 
